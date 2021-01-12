@@ -7,4 +7,6 @@
 # SLURM ignores
 *.sh
 
-
+# Git ignores the large data files
+Data/shortage_costs_28_Feb_2018_17_04_42.mat
+Data/runoff_by_state_Mar16_knnboot_1t.mat

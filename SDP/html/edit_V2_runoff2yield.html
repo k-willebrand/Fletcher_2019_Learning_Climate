@@ -1,0 +1,303 @@
+
+<!DOCTYPE html
+  PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><head>
+      <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--
+This HTML was auto-generated from MATLAB code.
+To make changes, update the MATLAB code and republish this document.
+      --><title>edit_V2_runoff2yield</title><meta name="generator" content="MATLAB 9.8"><link rel="schema.DC" href="http://purl.org/dc/elements/1.1/"><meta name="DC.date" content="2020-11-29"><meta name="DC.source" content="edit_V2_runoff2yield.m"><style type="text/css">
+html,body,div,span,applet,object,iframe,h1,h2,h3,h4,h5,h6,p,blockquote,pre,a,abbr,acronym,address,big,cite,code,del,dfn,em,font,img,ins,kbd,q,s,samp,small,strike,strong,sub,sup,tt,var,b,u,i,center,dl,dt,dd,ol,ul,li,fieldset,form,label,legend,table,caption,tbody,tfoot,thead,tr,th,td{margin:0;padding:0;border:0;outline:0;font-size:100%;vertical-align:baseline;background:transparent}body{line-height:1}ol,ul{list-style:none}blockquote,q{quotes:none}blockquote:before,blockquote:after,q:before,q:after{content:'';content:none}:focus{outine:0}ins{text-decoration:none}del{text-decoration:line-through}table{border-collapse:collapse;border-spacing:0}
+
+html { min-height:100%; margin-bottom:1px; }
+html body { height:100%; margin:0px; font-family:Arial, Helvetica, sans-serif; font-size:10px; color:#000; line-height:140%; background:#fff none; overflow-y:scroll; }
+html body td { vertical-align:top; text-align:left; }
+
+h1 { padding:0px; margin:0px 0px 25px; font-family:Arial, Helvetica, sans-serif; font-size:1.5em; color:#d55000; line-height:100%; font-weight:normal; }
+h2 { padding:0px; margin:0px 0px 8px; font-family:Arial, Helvetica, sans-serif; font-size:1.2em; color:#000; font-weight:bold; line-height:140%; border-bottom:1px solid #d6d4d4; display:block; }
+h3 { padding:0px; margin:0px 0px 5px; font-family:Arial, Helvetica, sans-serif; font-size:1.1em; color:#000; font-weight:bold; line-height:140%; }
+
+a { color:#005fce; text-decoration:none; }
+a:hover { color:#005fce; text-decoration:underline; }
+a:visited { color:#004aa0; text-decoration:none; }
+
+p { padding:0px; margin:0px 0px 20px; }
+img { padding:0px; margin:0px 0px 20px; border:none; }
+p img, pre img, tt img, li img, h1 img, h2 img { margin-bottom:0px; }
+
+ul { padding:0px; margin:0px 0px 20px 23px; list-style:square; }
+ul li { padding:0px; margin:0px 0px 7px 0px; }
+ul li ul { padding:5px 0px 0px; margin:0px 0px 7px 23px; }
+ul li ol li { list-style:decimal; }
+ol { padding:0px; margin:0px 0px 20px 0px; list-style:decimal; }
+ol li { padding:0px; margin:0px 0px 7px 23px; list-style-type:decimal; }
+ol li ol { padding:5px 0px 0px; margin:0px 0px 7px 0px; }
+ol li ol li { list-style-type:lower-alpha; }
+ol li ul { padding-top:7px; }
+ol li ul li { list-style:square; }
+
+.content { font-size:1.2em; line-height:140%; padding: 20px; }
+
+pre, code { font-size:12px; }
+tt { font-size: 1.2em; }
+pre { margin:0px 0px 20px; }
+pre.codeinput { padding:10px; border:1px solid #d3d3d3; background:#f7f7f7; }
+pre.codeoutput { padding:10px 11px; margin:0px 0px 20px; color:#4c4c4c; }
+pre.error { color:red; }
+
+@media print { pre.codeinput, pre.codeoutput { word-wrap:break-word; width:100%; } }
+
+span.keyword { color:#0000FF }
+span.comment { color:#228B22 }
+span.string { color:#A020F0 }
+span.untermstring { color:#B20000 }
+span.syscmd { color:#B28C00 }
+span.typesection { color:#A0522D }
+
+.footer { width:auto; padding:10px 0px; margin:25px 0px 0px; border-top:1px dotted #878787; font-size:0.8em; line-height:140%; font-style:italic; color:#878787; text-align:left; float:none; }
+.footer p { margin:0px; }
+.footer a { color:#878787; }
+.footer a:hover { color:#878787; text-decoration:underline; }
+.footer a:visited { color:#878787; }
+
+table th { padding:7px 5px; text-align:left; vertical-align:middle; border: 1px solid #d6d4d4; font-weight:bold; }
+table td { padding:7px 5px; text-align:left; vertical-align:top; border:1px solid #d6d4d4; }
+
+
+
+
+
+  </style></head><body><div class="content"><pre class="codeinput"><span class="keyword">function</span>  [yield, K, demand, unmet_dom, unmet_ag, desalsupply, desalfill]  = edit_V2_runoff2yield(inflow, T, P, storage, capacity, runParam, climParam)
+
+<span class="comment">% Inflow is a monthly time series in MCM/y starting in January</span>
+<span class="comment">% Storage is a scalar</span>
+
+desalsupply = [];
+desalfill = [];
+
+numYears = runParam.steplen;
+[numRuns,~] = size(T);
+
+<span class="comment">% check numRuns correct</span>
+dmd_dom = cmpd2mcmpy(runParam.domDemand) * ones(numRuns,12*numYears);
+<span class="keyword">if</span> runParam.desalOn
+    dmd_dom = cmpd2mcmpy(300000);
+<span class="keyword">end</span>
+dmd_ag = repmat([2.5 1.5 0.8 2.0 1.9 2.9 3.6 0.6 0.5 0.3 0.2 3.1], numRuns,numYears);
+demand = dmd_dom + dmd_ag;
+dead_storage = 20;
+env_flow = 0;
+eff_storage = storage - dead_storage;
+
+[E]  = evaporation_sdp(storage, T, P, climParam, runParam);
+
+net_inflow = inflow-env_flow-E;
+
+K = zeros(numRuns,numYears*12);
+release = zeros(numRuns,numYears*12);
+K0 = eff_storage;
+desalsupply = zeros(numRuns,numYears*12);
+
+<span class="keyword">if</span> ~runParam.desalOn <span class="comment">% if desalination is not on, consider only the reservoir operation</span>
+
+    <span class="keyword">if</span> ~runParam.optReservoir <span class="comment">% utilize the greedy algorithm if reservoir operations are not optimized</span>
+
+        <span class="keyword">for</span> t = 1:numYears*12
+            <span class="keyword">if</span> t == 1
+                Kprev = K0;
+            <span class="keyword">else</span>
+                Kprev = K(t-1);
+            <span class="keyword">end</span>
+
+            <span class="comment">% If demand is less than effective inflow, release all demand and add storage up to limit</span>
+            indLess = demand(:,t) &lt; inflow(:,t) - env_flow - E(:,t);
+            release(indLess,t) = demand(indLess,t);
+            K(indLess,t) = min(Kprev - release(indLess,t) + inflow(indLess,t) - env_flow - E(indLess,t), eff_storage);
+            <span class="comment">% If demand is greater than effective inflow, but less than available storage, release all demand</span>
+            indMid = demand(:,t) &lt; Kprev + inflow(:,t) - env_flow - E(:,t) &amp; demand(:,t) &gt; inflow(:,t) - env_flow - E(:,t);
+            release(indMid,t) = demand(indMid,t);
+            K(indMid,t) = Kprev - release(indMid,t) + inflow(indMid,t) - env_flow - E(indMid,t);
+            <span class="comment">% If demand is greater than effective inflow and storage, release as much as available</span>
+            indGreat = ~indLess &amp; ~indMid;
+            release(indGreat,t) = Kprev + inflow(indGreat,t) - env_flow - E(indGreat,t);
+            K(indGreat,t) = 0;
+
+        <span class="keyword">end</span>
+    <span class="keyword">else</span> <span class="comment">% If the reservoir is optimized using DDP</span>
+        <span class="keyword">for</span> run=1:numRuns <span class="comment">%for each row of the possible temperature states</span>
+            [yield_ddp,~, K_ddp] = opt_ddp(net_inflow(run,:), eff_storage, demand(run,:));
+            release(run,:)=yield_ddp; <span class="comment">% note that the comparable release (no overflow) must considers yield_ddp, not release_ddp</span>
+            K(run,:)=K_ddp; <span class="comment">%K is eff_storage</span>
+        <span class="keyword">end</span>
+    <span class="keyword">end</span>
+
+<span class="keyword">else</span>
+    desalfill = zeros(numRuns,numYears*12);
+    desalthreshold = capacity;
+
+    <span class="keyword">for</span> t = 1:numYears*12
+        <span class="keyword">if</span> t == 1
+            Kprev = K0;
+        <span class="keyword">else</span>
+            Kprev = K(t-1);
+        <span class="keyword">end</span>
+
+        <span class="comment">% If demand is less than effective inflow, release all demand and add storage up to limit</span>
+        indLess = demand(:,t) &lt; inflow(:,t) - env_flow - E(:,t);
+        release(indLess,t) = demand(indLess,t);
+        K(indLess,t) = min(Kprev - release(indLess,t) + inflow(indLess,t) - env_flow - E(indLess,t), eff_storage);
+        <span class="comment">% If demand is greater than effective inflow, but less than available storage, release all demand</span>
+        indMid = demand(:,t) &lt; Kprev + inflow(:,t) - env_flow - E(:,t) &amp; demand(:,t) &gt; inflow(:,t) - env_flow - E(:,t);
+        release(indMid,t) = demand(indMid,t);
+        K(indMid,t) = Kprev - release(indMid,t) + inflow(indMid,t) - env_flow - E(indMid,t);
+        <span class="comment">% If demand is greater than effective inflow and storage, release as much as available</span>
+        indGreat = ~indLess &amp; ~indMid;
+        release(indGreat,t) = Kprev + inflow(indGreat,t) - env_flow - E(indGreat,t);
+        K(indGreat,t) = 0;
+
+
+        <span class="comment">% If demand was not fully met by inflows and storage, desalinate as much as needed and can</span>
+        desalsupply(:,t) = min( max(demand(:,t) - release(:,t),0), capacity);
+
+        <span class="comment">% If storage is less than half capacity and desal capacity remains, fill to half or as much as can</span>
+        remainingcapacity = capacity - desalsupply(:,t);
+        desalfill(:,t) = min(remainingcapacity, max(storage/2 - K(:,t), 0));
+        K(:,t) = K(:,t) + desalfill(:,t);
+    <span class="keyword">end</span>
+
+    <span class="comment">% Check not overusing desal (MOVED THIS INTO THE CONDITIONAL LOOP -</span>
+    <span class="comment">% outside of conditional before)</span>
+
+    desaltotal = desalfill + desalsupply;
+    <span class="keyword">if</span> desaltotal &gt; capacity
+        error(<span class="string">'desal supply exceeds capacity'</span>)
+    <span class="keyword">end</span>
+<span class="keyword">end</span>
+
+<span class="comment">% Ag demand is unmet first</span>
+unmet = max(demand - release - desalsupply, 0);
+unmet_ag = min(unmet, dmd_ag);
+unmet_dom = unmet - unmet_ag;
+
+yield = release;
+</pre><pre class="codeoutput error">Not enough input arguments.
+
+Error in edit_V2_runoff2yield (line 9)
+numYears = runParam.steplen;
+</pre><p class="footer"><br><a href="https://www.mathworks.com/products/matlab/">Published with MATLAB&reg; R2020a</a><br></p></div><!--
+##### SOURCE BEGIN #####
+function  [yield, K, demand, unmet_dom, unmet_ag, desalsupply, desalfill]  = edit_V2_runoff2yield(inflow, T, P, storage, capacity, runParam, climParam)
+
+% Inflow is a monthly time series in MCM/y starting in January
+% Storage is a scalar
+
+desalsupply = [];
+desalfill = [];
+
+numYears = runParam.steplen;
+[numRuns,~] = size(T);
+
+% check numRuns correct
+dmd_dom = cmpd2mcmpy(runParam.domDemand) * ones(numRuns,12*numYears);
+if runParam.desalOn
+    dmd_dom = cmpd2mcmpy(300000);
+end
+dmd_ag = repmat([2.5 1.5 0.8 2.0 1.9 2.9 3.6 0.6 0.5 0.3 0.2 3.1], numRuns,numYears);
+demand = dmd_dom + dmd_ag;
+dead_storage = 20;
+env_flow = 0;
+eff_storage = storage - dead_storage;
+
+[E]  = evaporation_sdp(storage, T, P, climParam, runParam);
+
+net_inflow = inflow-env_flow-E;
+
+K = zeros(numRuns,numYears*12);
+release = zeros(numRuns,numYears*12);
+K0 = eff_storage;
+desalsupply = zeros(numRuns,numYears*12);
+
+if ~runParam.desalOn % if desalination is not on, consider only the reservoir operation
+    
+    if ~runParam.optReservoir % utilize the greedy algorithm if reservoir operations are not optimized
+        
+        for t = 1:numYears*12
+            if t == 1
+                Kprev = K0;
+            else
+                Kprev = K(t-1);
+            end
+            
+            % If demand is less than effective inflow, release all demand and add storage up to limit
+            indLess = demand(:,t) < inflow(:,t) - env_flow - E(:,t);
+            release(indLess,t) = demand(indLess,t);
+            K(indLess,t) = min(Kprev - release(indLess,t) + inflow(indLess,t) - env_flow - E(indLess,t), eff_storage);
+            % If demand is greater than effective inflow, but less than available storage, release all demand
+            indMid = demand(:,t) < Kprev + inflow(:,t) - env_flow - E(:,t) & demand(:,t) > inflow(:,t) - env_flow - E(:,t);
+            release(indMid,t) = demand(indMid,t);
+            K(indMid,t) = Kprev - release(indMid,t) + inflow(indMid,t) - env_flow - E(indMid,t);
+            % If demand is greater than effective inflow and storage, release as much as available
+            indGreat = ~indLess & ~indMid;
+            release(indGreat,t) = Kprev + inflow(indGreat,t) - env_flow - E(indGreat,t);
+            K(indGreat,t) = 0;
+            
+        end
+    else % If the reservoir is optimized using DDP
+        for run=1:numRuns %for each row of the possible temperature states
+            [yield_ddp,~, K_ddp] = opt_ddp(net_inflow(run,:), eff_storage, demand(run,:));
+            release(run,:)=yield_ddp; % note that the comparable release (no overflow) must considers yield_ddp, not release_ddp
+            K(run,:)=K_ddp; %K is eff_storage
+        end
+    end
+    
+else
+    desalfill = zeros(numRuns,numYears*12);
+    desalthreshold = capacity;
+    
+    for t = 1:numYears*12
+        if t == 1
+            Kprev = K0;
+        else
+            Kprev = K(t-1);
+        end
+        
+        % If demand is less than effective inflow, release all demand and add storage up to limit
+        indLess = demand(:,t) < inflow(:,t) - env_flow - E(:,t);
+        release(indLess,t) = demand(indLess,t);
+        K(indLess,t) = min(Kprev - release(indLess,t) + inflow(indLess,t) - env_flow - E(indLess,t), eff_storage);
+        % If demand is greater than effective inflow, but less than available storage, release all demand
+        indMid = demand(:,t) < Kprev + inflow(:,t) - env_flow - E(:,t) & demand(:,t) > inflow(:,t) - env_flow - E(:,t);
+        release(indMid,t) = demand(indMid,t);
+        K(indMid,t) = Kprev - release(indMid,t) + inflow(indMid,t) - env_flow - E(indMid,t);
+        % If demand is greater than effective inflow and storage, release as much as available
+        indGreat = ~indLess & ~indMid;
+        release(indGreat,t) = Kprev + inflow(indGreat,t) - env_flow - E(indGreat,t);
+        K(indGreat,t) = 0;
+        
+        
+        % If demand was not fully met by inflows and storage, desalinate as much as needed and can
+        desalsupply(:,t) = min( max(demand(:,t) - release(:,t),0), capacity);
+        
+        % If storage is less than half capacity and desal capacity remains, fill to half or as much as can
+        remainingcapacity = capacity - desalsupply(:,t);
+        desalfill(:,t) = min(remainingcapacity, max(storage/2 - K(:,t), 0));
+        K(:,t) = K(:,t) + desalfill(:,t);
+    end
+    
+    % Check not overusing desal (MOVED THIS INTO THE CONDITIONAL LOOP -
+    % outside of conditional before)
+    
+    desaltotal = desalfill + desalsupply;
+    if desaltotal > capacity
+        error('desal supply exceeds capacity')
+    end
+end
+
+% Ag demand is unmet first
+unmet = max(demand - release - desalsupply, 0);
+unmet_ag = min(unmet, dmd_ag);
+unmet_dom = unmet - unmet_ag;
+
+yield = release;
+##### SOURCE END #####
+--></body></html>

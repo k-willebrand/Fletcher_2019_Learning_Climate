@@ -40,7 +40,7 @@ end
 f = figure;
 subplot(1,2,1)
 plot(threshP, s_T_abs, 'LineWidth', 1.5, 'Color', 'k')
-xlim([70, 83]) % previously: xlim([70, 83])
+xlim([77, 90]) % previously: xlim([70, 83])
 ylim([s_T_abs(1), s_T_abs(end)])
 xlabel('Mean P [mm/m]')
 ylabel('Mean T [degrees C]')
@@ -48,7 +48,7 @@ title('Initial policy')
 subplot(1,2,2)
 hold on
 plot(threshPFlex, s_T_abs, 'LineWidth', 1.5)
-xlim([70, 83]) % previously: xlim([70, 83])
+xlim([77, 90]) % previously: xlim([70, 83])
 ylim([s_T_abs(1), s_T_abs(end)])
 xlabel('Mean P [mm/m]')
 ylabel('Mean T [degrees C]')
@@ -62,7 +62,7 @@ f = figure;
 plot(threshP, s_T_abs, 'LineWidth', 1.5, 'Color', 'k')
 hold on
 plot(threshPFlex, s_T_abs, 'LineWidth', 1.5)
-xlim([70, 83])
+xlim([77, 90])
 ylim([s_T_abs(1), s_T_abs(end)])
 xlabel('Mean P [mm/m]')
 ylabel('Mean T [degrees C]')
@@ -309,10 +309,7 @@ end
 
 %load('/Users/sarahfletcher/Dropbox (MIT)/Mombasa_Climate/SDP/results67847_19_Mar_2018_21_47_26_base.mat')
 
-% load('results_05_Dec_2020_12_33_30.mat'); % quadratic, domShortage = 5,
-% non-opt
-
-load('results_15_Dec_2020_13_11_02.mat') %quadratic, domShortage = 2, non-opt
+% load('results_05_Dec_2020_12_33_30.mat'); %q
 
 % Regret for last time period
 bestOption = 0;
