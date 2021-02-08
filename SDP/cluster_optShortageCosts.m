@@ -1,5 +1,5 @@
 function  [shortageCost, yield, K, unmet_dom, unmet_ag, unmet_dom_squared, unmet_ag_squared]  =...
-    cluster_optShortageCosts(inflow, T, P, storage, runParam, climParam, costParam,index_s_p,index_s_t)
+    cluster_optShortageCosts(inflow, T, P, runParam, climParam, costParam,index_s_p,index_s_t,storage, s, date)
 
 % DESCRIPTION:
 %   Uses DDP to find the optimal release policy if runParam.optReservoir == true
@@ -23,7 +23,6 @@ function  [shortageCost, yield, K, unmet_dom, unmet_ag, unmet_dom_squared, unmet
 %   K is a monthly time series of effective reservoir storages (no dead storage) for the optimized
 %   reservoir
 
-
 numYears = runParam.steplen;
 [numRuns,~] = size(T);
 
@@ -40,37 +39,39 @@ desalsupply = zeros(numRuns,numYears*12);
 
 % optimize reservoir operation to minimize shortage costs using DDP for
 % each capacity
-for s = 1:length(storage)
-    eff_storage = storage(s) - dead_storage; %should have [60, 100]
-    
-    [E]  = evaporation_sdp(storage(s), T, P, climParam, runParam);
-    net_inflow = inflow-env_flow-E;
-    K0 = eff_storage; % assume reservoir storage is initially full
 
-    for run=1:numRuns % for each possible temperature state
-        [yield_ddp,~, K_ddp] = opt_ddp(net_inflow(run,:), eff_storage, dmd_dom(run,:), dmd_ag(run,:), costParam);
-        release(run,:)=yield_ddp; % release does not consider overflow
-        K(run,:)=K_ddp(1:length(yield_ddp)); % K is the optimized eff_storage time series
-    end
-    
-    % Ag demand is unmet first
-    yield_mdl = release;
-    unmet_mdl = max(demand - release - desalsupply, 0);
-    unmet_ag_mdl = min(unmet_mdl, dmd_ag);
-    unmet_dom_mdl = unmet_mdl - unmet_ag_mdl;
-    
-    unmet_ag = mean(sum(unmet_ag_mdl,2));
-    unmet_dom = mean(sum(unmet_dom_mdl,2));
-    unmet_ag_squared = mean(sum(unmet_ag_mdl.^2,2));
-    unmet_dom_squared = mean(sum(unmet_dom_mdl.^2,2));
-    yield = mean(sum(yield_mdl,2));
-    
-    % Calculate shortage costs incurred for unmet demand, using
-    % differentiated costs for agriculture and domestic shortages and
-    % quadratic formulation
-    shortageCost =  (unmet_ag_squared * costParam.agShortage + unmet_dom_squared * costParam.domShortage) * 1E6;
-    
-    savename_shortageCost = strcat('cluster_shortage_costs_s_t',num2str(index_s_t),'_s_p',num2str(index_s_p),'_s',num2str(s),'_',datetime);
-    save(savename_shortageCost, 'shortageCost', 'yield_mdl', 'yield', 'unmet_ag_mdl', 'unmet_ag', 'unmet_dom_mdl', 'unmet_dom', 'unmet_ag_squared', 'unmet_dom_squared')
+eff_storage = storage - dead_storage; %should have [60, 100]
+
+[E]  = evaporation_sdp(storage, T, P, climParam, runParam);
+net_inflow = inflow-env_flow-E;
+K0 = eff_storage; % assume reservoir storage is initially full
+
+for run=1:numRuns % for each possible temperature state
+    [yield_ddp,~, K_ddp] = opt_ddp(net_inflow(run,:), eff_storage, dmd_dom(run,:), dmd_ag(run,:), costParam);
+    release(run,:)=yield_ddp; % release does not consider overflow
+    K(run,:)=K_ddp(1:length(yield_ddp)); % K is the optimized eff_storage time series
 end
+
+% Ag demand is unmet first
+yield_mdl = release;
+unmet_mdl = max(demand - release - desalsupply, 0);
+unmet_ag_mdl = min(unmet_mdl, dmd_ag);
+unmet_dom_mdl = unmet_mdl - unmet_ag_mdl;
+
+unmet_ag = mean(sum(unmet_ag_mdl,2));
+unmet_dom = mean(sum(unmet_dom_mdl,2));
+unmet_ag_squared = mean(sum(unmet_ag_mdl.^2,2));
+unmet_dom_squared = mean(sum(unmet_dom_mdl.^2,2));
+yield = mean(sum(yield_mdl,2));
+
+% Calculate shortage costs incurred for unmet demand, using
+% differentiated costs for agriculture and domestic shortages and
+% quadratic formulation
+shortageCost =  (unmet_ag_squared * costParam.agShortage + unmet_dom_squared * costParam.domShortage) * 1E6;
+
+savename_shortageCost = strcat('cluster_shortage_costs_st',num2str(index_s_t),'_sp',num2str(index_s_p),'_s',num2str(s),'_', date)
+save(savename_shortageCost, 'shortageCost', 'yield_mdl', 'yield', 'unmet_ag_mdl', 'unmet_ag', 'unmet_dom_mdl', 'unmet_dom', 'unmet_ag_squared', 'unmet_dom_squared')
+
+
+
 end

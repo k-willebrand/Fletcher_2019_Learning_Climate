@@ -46,6 +46,10 @@ runParam.runSDP = true;
 % Number of years to generate in T, P, streamflow time series
 runParam.steplen = 20; 
 
+% Set Emissions Scenario
+emisScenario = {'RCP19' 'RCP26' 'RCP34' 'RCP45' 'RCP6' 'RCP7' 'RCP85'}
+runParam.setPathway = emisScenario{7}
+
 % If true, simulate runoff time series from T, P time series using CLIRUN. If false, load saved.
 runParam.runRunoff = false; 
 
@@ -64,10 +68,7 @@ runParam.calcTmat = false;
 % If true, perform DDP to optimize reservoir operatations in the water
 % system model. If false, use non-optimized fixed rule curve for reservoir
 % operations
-runParam.optReservoir = true;
-
-% The number of discrete reservoir storage states in the DDP optimization.
-runParam.discrStorage = 75;
+runParam.optReservoir = false;
 
 % If true, calculate water shortage costs from runoff times series using water system model. If false, load saved.
 runParam.calcShortage = false; 
@@ -89,8 +90,13 @@ runParam.runoffLoadName = 'runoff_by_state_Mar16_knnboot_1t';
 % If using pre-saved shortage costs, name of .mat file to load
 %runParam.shortageLoadName = 'shortage_costs_28_Feb_2018_17_04_42';
 
-% If using pre-saved shortage costs, name of .mat file to load
-runParam.shortageLoadName = 'ddp_results';
+% If using pre-saved shortage costs of the optimized reservoir, name of .mat file to load
+if runParam.optReservoir == true
+    runParam.shortageLoadName = 'ddp_results_domCost1_80_120'; 
+else
+     runParam.shortageLoadName = 'shortage_costs_nonopt_domCost1_80_120'; %to get to the same magnitude of Sarah's, divide shortageCost/100 (E9)
+end
+
 
 % If true, save results
 runParam.saveOn = true;
@@ -109,14 +115,17 @@ climParam.numSampTS = 100;
 % the state space in order to ensure state space validity
 climParam.checkBins = false;
 
-
 % Set up cost parameters; vary for sensitivity analysis
 costParam = struct;
 
 %costParam.yieldprctl = 50;
 
 % Value of shortage penalty for domestic use [$/m3]
-costParam.domShortage = 5; % Fletcher et al. (2019) utilized 5
+costParam.domShortage = 1; % Fletcher et al. (2019) utilized 5
+
+% To test different values of domShortage post-running on the cluster, use
+% this parameter to scale domShortage values/shortage cost results:
+costParam.scaleDomShortage = 1/100;
 
 % Value of shortage penalty for ag use [$/m3]
 costParam.agShortage = 0;
@@ -184,9 +193,12 @@ if ~runParam.desalOn
     [infra_cost(4), infra_cost(5)] = storage2damcost(storage(1), storage(2));
     percsmalltolarge = (infra_cost(3) - infra_cost(2))/infra_cost(2);
     flexexp = infra_cost(4) + infra_cost(5);
-    diffsmalltolarge = infra_cost(3) - infra_cost(2);
-    shortagediff = (infra_cost(3) - infra_cost(2))/ (costParam.domShortage * 1e6);
-    
+    diffsmalltolarge = infra_cost(3) - infra_cost(2); %large capacity cost - small capacity cost
+    shortagediff_linear = (infra_cost(3) - infra_cost(2))/ (costParam.domShortage * 1e6); % This is what was originally in the SDP
+    % Below is the shortage difference utilizing the quadratic costing
+    % method
+    shortagediff = sqrt((infra_cost(3)-infra_cost(2))/(costParam.domShortage *costParam.scaleDomShortage * 1e6)); % Updated for quadratic costing formulation?
+
 else
     % Planning scenario C: dam exists, make decision about new desalination plant
     
@@ -210,7 +222,8 @@ end
 if runParam.calcTmat
     load('BMA_results_deltap05T_p2P07-Feb-2018 20:18:49.mat')
     [T_Temp, T_Precip, ~, ~, ~, ~] = bma2TransMat( NUT, NUP, s_T, s_P, N, climParam);
-    save('T_Temp_Precip', 'T_Temp', 'T_Precip')    
+    T_name = strcat('T_Temp_Precip_', runParam.setPathway) % save a different transition matrix file for different emissions pathways
+    save(T_name, 'T_Temp', 'T_Precip')
 else
     load('T_Temp_Precip') 
 end
@@ -422,10 +435,11 @@ else
     load(runParam.shortageLoadName);
 end
 
-    
 %% Solve SDP optimal policies using backwards recursion
 
 if runParam.runSDP
+    
+shortageCost = shortageCost.*costParam.scaleDomShortage;
 
 % Initialize best value and best action matrices
 % Temperature states x precipitaiton states x capacity states, time
@@ -797,8 +811,3 @@ end
 
 
 end
-
-
-
-
-

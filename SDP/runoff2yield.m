@@ -33,27 +33,32 @@ if ~runParam.desalOn % no desalination, consider only the reservoir operation
     
     if ~runParam.optReservoir % non-optimized reservoir operation (greedy algorithm)
         
-        for t = 1:numYears*12
-            if t == 1
-                Kprev = K0;
-            else
-                Kprev = K(t-1);
-            end
-            
-            % If demand is less than effective inflow, release all demand and add storage up to limit
-            indLess = demand(:,t) < inflow(:,t) - env_flow - E(:,t);
-            release(indLess,t) = demand(indLess,t);
-            K(indLess,t) = min(Kprev - release(indLess,t) + inflow(indLess,t) - env_flow - E(indLess,t), eff_storage);
-            % If demand is greater than effective inflow, but less than available storage, release all demand
-            indMid = demand(:,t) < Kprev + inflow(:,t) - env_flow - E(:,t) & demand(:,t) > inflow(:,t) - env_flow - E(:,t);
-            release(indMid,t) = demand(indMid,t);
-            K(indMid,t) = Kprev - release(indMid,t) + inflow(indMid,t) - env_flow - E(indMid,t);
-            % If demand is greater than effective inflow and storage, release as much as available
-            indGreat = ~indLess & ~indMid;
-            release(indGreat,t) = Kprev + inflow(indGreat,t) - env_flow - E(indGreat,t);
-            K(indGreat,t) = 0;
-            
+    % The following code below is from inflow2yield non-optimized
+    % reservoir operation (updated since Fletcher et al. 2019)
+        for i=1:numRuns
+            for t = 1:length(inflow)
+                if t == 1
+                    Kprev = K0;
+                else
+                    Kprev = K(i,t-1);
+                end
+                
+                % If demand is less than effective inflow, release all demand and add storage up to limit
+                if demand(i,t) < inflow(i,t) - env_flow - E(i,t)
+                    release(i,t) = demand(i,t);
+                    K(i,t) = min(Kprev - release(i,t) + inflow(i,t) - env_flow - E(i,t), eff_storage);
+                    % If demand is greater than effective inflow, but less than available storage, release all demand
+                elseif demand(i,t) < Kprev + inflow(i,t) - env_flow - E(i,t) && demand(i,t) > inflow(i,t) - env_flow - E(i,t)
+                    release(i,t) = demand(i,t);
+                    K(i,t) = Kprev - release(i,t) + inflow(i,t) - env_flow - E(i,t);
+                    % If demand is greater than effective inflow and storage, release as much as available
+                else
+                    release(i,t) = Kprev + inflow(i,t) - env_flow - E(i,t);
+                    K(i,t) = 0;
+                end
+            end            
         end
+        
     else % optimized reservoir operation to minimize shortage costs using DDP
         for run=1:numRuns % for each possible temperature state
             [yield_ddp,~, K_ddp] = opt_ddp(net_inflow(run,:), eff_storage, dmd_dom(run,:), dmd_ag(run,:), costParam);
@@ -62,7 +67,7 @@ if ~runParam.desalOn % no desalination, consider only the reservoir operation
         end
     end
     
-else
+else % with desalination
     desalfill = zeros(numRuns,numYears*12);
     desalthreshold = capacity;
     

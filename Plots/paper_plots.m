@@ -2,7 +2,8 @@
 % Load data and set path
 if true
 addpath(genpath('/Users/sarahfletcher/Documents/MATLAB/figure_tools'))
-load('results67847_19_Mar_2018_21_47_26_base.mat')
+%load('results67847_19_Mar_2018_21_47_26_base.mat')
+load('nonopt_SDPSim_results_domCost1.mat')
 end
 decade = {'2001-2020', '2021-2040', '2041-2060', '2061-2080', '2081-2100'};
 decadeline = {'2001-\newline2020', '2021-\newline2040', '2041-\newline2060', '2061-\newline2080', '2081-\newline2100'};
@@ -96,7 +97,9 @@ if true
 %data = {'results_05_Dec_2020_12_33_30.mat'}; % Quadratic shortage cost
 %(domShortage = 5), non-opt
 
-data = {'results_15_Dec_2020_13_11_02.mat'}; % Quadratic shortage cost (domShortage = 2), non-opt
+%data = {'results_15_Dec_2020_13_11_02.mat'}; % Quadratic shortage cost (domShortage = 2), non-opt
+
+data = {'nonopt_SDPSim_results_domCost1.mat'};
 
 action = cell(3,1);
 totalCostTime = cell(3,1);
@@ -105,7 +108,7 @@ shortageCostTime = cell(3,1);
 
 for k = 1%:3
     
-    load(data{k})
+    load(data{1}) % load(data{k})
     
     % Set infra costs
     
@@ -148,8 +151,11 @@ for k = 1%:3
     end
     
     % run simulation
-    [ C_state, T_state, P_state, action{k}, damCostTime{k}, shortageCostTime{k},...
-    opexCostTime, totalCostTime{k}] = sdp_sim( climParam, runParam, costParam, s_T_abs, s_P_abs, T_Temp, T_Precip, s_C, M_C, X, shortageCost, a_exp, infra_cost, desal_opex );
+    %[ C_state, T_state, P_state, action{k}, damCostTime{k}, shortageCostTime{k},...
+    %opexCostTime, totalCostTime{k}] = sdp_sim( climParam, runParam, costParam, s_T_abs, s_P_abs, T_Temp, T_Precip, s_C, M_C, X, shortageCost, a_exp, infra_cost, desal_opex );
+
+     [ C_state, T_state, P_state, action, damCostTime, shortageCostTime,...
+    opexCostTime, totalCostTime] = sdp_sim( climParam, runParam, costParam, s_T_abs, s_P_abs, T_Temp, T_Precip, s_C, M_C, X, shortageCost, a_exp, infra_cost, desal_opex );
 
 
 end
@@ -166,7 +172,9 @@ if true
 %load('results_05_Dec_2020_12_33_30.mat','action','damCostTime',
 %'shortageCostTime', 'totalCostTime'); %domShortage = 5, non-opt
 
-load('results_15_Dec_2020_13_11_02.mat','action','damCostTime', 'shortageCostTime', 'totalCostTime'); % quadratic, domShortage = 2, non-opt
+%load('results_15_Dec_2020_13_11_02.mat','action','damCostTime', 'shortageCostTime', 'totalCostTime'); % quadratic, domShortage = 2, non-opt
+
+%load('nonopt_SDPSim_results_domCost1.mat','action','damCostTime', 'shortageCostTime', 'totalCostTime'); % quadratic, domShortage = 2, non-opt
 
 [R,~,~] = size(action); %size(action{1});
 labels = {'a)', 'b)', 'c)', 'd)', 'e)', 'f)'};
@@ -230,7 +238,7 @@ for k = 1%:3
     ylabel('Frequency')
     
     % plot cdfs
-    subplot(3,8,k*8-4:k*8)
+    subplot(3,8,k*8-4:k*8) 
     totalCostFlex = sum(totalCostTime(:,:,1),2);%sum(totalCostTime{k}(:,:,1),2)
     totalCostLarge = sum(totalCostTime(:,:,2),2); %sum(totalCostTime{k}(:,:,2),2);
     totalCostSmall = sum(totalCostTime(:,:,3),2); %sum(totalCostTime{k}(:,:,3),2)
@@ -276,8 +284,8 @@ for k = 1%:3
         text(255, .15, 'Scenario C: High demand - 0% DR')
     end
 end
-s = suptitle('Simulated infrastructure decisions and costs (N=1000)');
-s.FontWeight = 'bold';
+%s = suptitle('Simulated infrastructure decisions and costs (N=1000)');
+%s.FontWeight = 'bold';
 font_size = 12;
 allaxes = findall(f, 'type', 'axes');
 set(allaxes,'FontSize', font_size)
@@ -312,7 +320,7 @@ end
 % load('results_05_Dec_2020_12_33_30.mat'); % quadratic, domShortage = 5,
 % non-opt
 
-load('results_15_Dec_2020_13_11_02.mat') %quadratic, domShortage = 2, non-opt
+%load('nonopt_SDPSim_results_domCost1.mat') %quadratic, domShortage = 1, opt
 
 % Regret for last time period
 bestOption = 0;
@@ -321,7 +329,7 @@ P_regret = [68 78 88];
 totalCost = squeeze(sum(totalCostTime(:,:,1:3), 2));
 meanCostPnow = zeros(length(P_regret),3);
 for i = 1:length(P_regret)
-    % Find simulaitons with this level of precip
+    % Find simulations with this level of precip
     ind_P = P_state(:,end) == P_regret(i);
     % Get average cost of each infra option in that P level
     totalCostPnow = totalCost(ind_P,:);

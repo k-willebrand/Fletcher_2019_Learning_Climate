@@ -199,6 +199,7 @@ else
             release(t) = Kprev + inflow(t) - env_flow - E(t);
             K(t) = 0;
         end
+    %end % KEANI JUST ADDED THIS HERE
         
         unmet = max(demand(t) - release(t), 0);
         unmet_ag = min(unmet, dmd_ag(t));
@@ -213,7 +214,7 @@ else
 
 end
 
-water_balance = round(K(1:end-1)+net_inflow(1:end)-release(1:end)-K(2:end));
+%water_balance = round(K(1:end-1)+net_inflow(1:end)-release(1:end)-K(2:end));
 
 % Ag demand is unmet first
 unmet = max(demand - release, 0);

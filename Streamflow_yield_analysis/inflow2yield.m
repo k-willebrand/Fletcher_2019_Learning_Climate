@@ -3,8 +3,6 @@ function  [yield, K, demand, unmet_dom, unmet_ag]  = inflow2yield(inflow, T, P, 
 % Inflow is a monthly time series in MCM/y starting in January
 % Storage is a scalar 
 
-global runParam 
-
 numYears = length(inflow)/12;
 
 dmd_dom = cmpd2mcmpy(150000) * ones(1,12*numYears);
@@ -45,8 +43,6 @@ K0 = eff_storage;
         end
     end
 
-end
-
 % Ag demand is unmet first
 unmet = max(demand - release, 0);
 unmet_ag = min(unmet, dmd_ag);
@@ -54,6 +50,7 @@ unmet_dom = unmet - unmet_ag;
 
 yield = release;
 
+end
 
 % First we will update reservoir operations through a deterministic dynamic
 % programming (DDP) approach. To use the previously simulated time series,

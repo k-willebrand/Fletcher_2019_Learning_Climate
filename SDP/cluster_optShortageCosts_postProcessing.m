@@ -5,7 +5,7 @@
 % under the folder variable
 
 % Identify the files for post processing (cluster_shortage_costs...mat files)
-folder = 'C:/Users/USER/Documents/GitHub/Fletcher_2019_Learning_Climate'; % NOTE: replace the folder name to the local folder containing the cluster shortage cost files
+folder = 'C:/Users/kcuw9/Documents/Fletcher_2019_Learning_Climate-reservoir_ops/DDP_Results pt 1'; % NOTE: replace the folder name to the local folder containing the cluster shortage cost files
 cluster_files = dir(fullfile(folder,'cluster_shortage_costs_st*_sp*_s*.mat'));
 
 % Define number of temperature states (s_T_abs) and precipation states (s_P_abs), decision
@@ -51,5 +51,6 @@ unmet_ag = unmet_ag_post;
 unmet_ag_squared = unmet_ag_squared_post;
 unmet_dom_squared = unmet_dom_squared_post;
 
-savename_shortageCost = strcat('shortage_costs', jobid,'_', string(datetime(indices(4),'ConvertFrom','yyyymmdd','Format','dd_MMM_yyy')));
+%savename_shortageCost = strcat('shortage_costs_pt2_', jobid,'_', string(datetime(indices(4),'ConvertFrom','yyyymmdd','Format','dd_MMM_yyy')));
+savename_shortageCost = strcat('ddp_results_pt1');
 save(savename_shortageCost, 'shortageCost', 'yield', 'unmet_ag', 'unmet_dom', 'unmet_ag_squared', 'unmet_dom_squared','desal_opex')
