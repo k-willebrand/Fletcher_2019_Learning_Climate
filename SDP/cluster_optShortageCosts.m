@@ -1,5 +1,5 @@
 function  [shortageCost, yield, K, unmet_dom, unmet_ag, unmet_dom_squared, unmet_ag_squared]  =...
-    cluster_optShortageCosts(inflow, T, P, runParam, climParam, costParam,index_s_p,index_s_t,storage, s, date)
+    cluster_optShortageCosts(inflow, T, P, runParam, climParam, costParam,index_s_p,index_s_t, storage, s, date)
 
 % DESCRIPTION:
 %   Uses DDP to find the optimal release policy if runParam.optReservoir == true
@@ -69,9 +69,7 @@ yield = mean(sum(yield_mdl,2));
 % quadratic formulation
 shortageCost =  (unmet_ag_squared * costParam.agShortage + unmet_dom_squared * costParam.domShortage) * 1E6;
 
-savename_shortageCost = strcat('cluster_shortage_costs_st',num2str(index_s_t),'_sp',num2str(index_s_p),'_s',num2str(s),'_', date)
-save(savename_shortageCost, 'shortageCost', 'yield_mdl', 'yield', 'unmet_ag_mdl', 'unmet_ag', 'unmet_dom_mdl', 'unmet_dom', 'unmet_ag_squared', 'unmet_dom_squared')
-
-
+savename_shortageCost = strcat('reservoir_results/cluster_shortage_costs_st',num2str(index_s_t),'_sp',num2str(index_s_p),'_s',num2str(storage),'_', date)
+save(savename_shortageCost, 'shortageCost', 'yield', 'unmet_ag', 'unmet_dom', 'unmet_ag_squared', 'unmet_dom_squared')
 
 end

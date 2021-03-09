@@ -2,17 +2,22 @@
 % Load data and set path
 if true
 addpath(genpath('/Users/sarahfletcher/Documents/MATLAB/figure_tools'))
-load('results67847_19_Mar_2018_21_47_26_base.mat')
+%load('results67847_19_Mar_2018_21_47_26_base.mat')
+%load('nonopt_SDPSim_results_domCost1.mat')
 end
 decade = {'2001-2020', '2021-2040', '2041-2060', '2061-2080', '2081-2100'};
 decadeline = {'2001-\newline2020', '2021-\newline2040', '2041-\newline2060', '2061-\newline2080', '2081-\newline2100'};
 
+%% Figure setup
+fig4 = true; % SDP initial and expansion thresholds
+fig5 = true; % Histogram and CDF of total costs of forward simulations
+fig6 = true; % Regret plot for wet (88 mm/m), moderate (78 mm/m), dry (68 mm/m)
 
 %% Optimal policies plots: Fig 4
 
-if true
+if fig4 == true
 
-% Calculate initial threshold
+% Calculate initial decision threshold (large or flexible)
 policy1 =  X(:,:,1,1);
 indexThresh = zeros(M_T_abs,1);
 for i = 1:M_T_abs
@@ -35,25 +40,32 @@ for j = 1:4
     threshPFlex(j,:) = s_P_abs(indexThresh);
 end
 
-
 % Option 1: subplots
 f = figure;
 subplot(1,2,1)
 plot(threshP, s_T_abs, 'LineWidth', 1.5, 'Color', 'k')
-xlim([77, 90]) % previously: xlim([70, 83])
+xlim([66, 78]) % previously: xlim([70, 83])
 ylim([s_T_abs(1), s_T_abs(end)])
 xlabel('Mean P [mm/m]')
 ylabel('Mean T [degrees C]')
+box on
 title('Initial policy')
+
 subplot(1,2,2)
 hold on
 plot(threshPFlex, s_T_abs, 'LineWidth', 1.5)
-xlim([77, 90]) % previously: xlim([70, 83])
+xlim([66, 78]) % previously: xlim([70, 83])
 ylim([s_T_abs(1), s_T_abs(end)])
 xlabel('Mean P [mm/m]')
 ylabel('Mean T [degrees C]')
 title('Flexible dam policy')
 legend(decade{2:end})
+box on
+if runParam.optReservoir
+    sgtitle('Optimized Reservoir Operations Decision Thresholds')
+else
+    sgtitle('Non-Optimized Reservoir Operations Decision Thresholds')
+end
 
 % Option 2 combined
 if false
@@ -62,13 +74,12 @@ f = figure;
 plot(threshP, s_T_abs, 'LineWidth', 1.5, 'Color', 'k')
 hold on
 plot(threshPFlex, s_T_abs, 'LineWidth', 1.5)
-xlim([77, 90])
+xlim([66, 78])
 ylim([s_T_abs(1), s_T_abs(end)])
 xlabel('Mean P [mm/m]')
 ylabel('Mean T [degrees C]')
 
 end
-
 
 FigHandle = f;
 figure_width = 5;
@@ -81,92 +92,16 @@ print_pdf = false;
 savename = 'SDP plots/discounting 3 perc/sdp_policy2';
 %printsetup(FigHandle, figure_width, figure_height, font_size, line_width, export_ppi, print_png, print_pdf, savename)
 
-
 end
 
 
-%% Simulation results: Fig 5
-
-if true
-
-%data = {'results67847_19_Mar_2018_21_47_26_base.mat', ...
-%    'results67351_18_Mar_2018_10_42_23_nodiscount.mat', ...
-%    'results67875_20_Mar_2018_16_32_51_desal.mat'};
-
-%data = {'results_05_Dec_2020_12_33_30.mat'}; % Quadratic shortage cost
-%(domShortage = 5), non-opt
-
-data = {'results_15_Dec_2020_13_11_02.mat'}; % Quadratic shortage cost (domShortage = 2), non-opt
-
-action = cell(3,1);
-totalCostTime = cell(3,1);
-damCostTime = cell(3,1);
-shortageCostTime = cell(3,1);
-
-for k = 1%:3
-    
-    load(data{k})
-    
-    % Set infra costs
-    
-    if k == 3
-        runParam.desalOn = true;
-    else
-        runParam.desalOn = false;
-        desal_opex = [];
-    end
-    
-    if k == 1
-        costParam.discountrate = .03;
-    else
-        costParam.discountrate = 0;
-    end
-    
-    runParam.desalCapacity = [60 80];
-    infra_cost = zeros(1,length(a_exp));
-   
-    if ~runParam.desalOn
-
-        % dam costs
-        infra_cost(2) = storage2damcost(storage(1),0);
-        infra_cost(3) = storage2damcost(storage(2),0);
-        [infra_cost(4), infra_cost(5)] = storage2damcost(storage(1), storage(2));
-        percsmalltolarge = (infra_cost(3) - infra_cost(2))/infra_cost(2);
-        flexexp = infra_cost(4) + infra_cost(5);
-        diffsmalltolarge = infra_cost(3) - infra_cost(2);
-        shortagediff = (infra_cost(3) - infra_cost(2))/ (costParam.domShortage * 1e6);
-
-    else
-        % desal capital costs
-        [infra_cost(2),~,opex_cost] = capacity2desalcost(runParam.desalCapacity(1),0); % small
-        infra_cost(3) = capacity2desalcost(runParam.desalCapacity(2),0); % large
-        [infra_cost(4), infra_cost(5)] = capacity2desalcost(runParam.desalCapacity(1), runParam.desalCapacity(2));  
-
-        % desal capital costs two individual plants
-        infra_cost(4) = infra_cost(2);
-        infra_cost(5) = capacity2desalcost(runParam.desalCapacity(2) - runParam.desalCapacity(1),0);
-    end
-    
-    % run simulation
-    [ C_state, T_state, P_state, action{k}, damCostTime{k}, shortageCostTime{k},...
-    opexCostTime, totalCostTime{k}] = sdp_sim( climParam, runParam, costParam, s_T_abs, s_P_abs, T_Temp, T_Precip, s_C, M_C, X, shortageCost, a_exp, infra_cost, desal_opex );
-
-
-end
-
-save('sim_data_combined', 'action','damCostTime', 'shortageCostTime', 'totalCostTime')
-
-end
+%% Simulation results: Fig 5: Run the forward simulations in sdp_climate.m
 
 %% Combine hist and cdf plot
 
-if true
+if fig5 == true
 
-%load('sim_data_combined')
-%load('results_05_Dec_2020_12_33_30.mat','action','damCostTime',
-%'shortageCostTime', 'totalCostTime'); %domShortage = 5, non-opt
-
-load('results_15_Dec_2020_13_11_02.mat','action','damCostTime', 'shortageCostTime', 'totalCostTime'); % quadratic, domShortage = 2, non-opt
+%load('nonopt_SDPSim_results_domCost1.mat','action','damCostTime', 'shortageCostTime', 'totalCostTime'); % quadratic, domShortage = 2, non-opt
 
 [R,~,~] = size(action); %size(action{1});
 labels = {'a)', 'b)', 'c)', 'd)', 'e)', 'f)'};
@@ -178,7 +113,7 @@ cmap = [cmap1(1,:); cmap1(4,:); cmap2(6:end,:)];
 cmap = cbrewer('qual', 'Set3', 8);
 
 % histogram w/ stacked bars
-for k = 1%:3
+for k = 1%:3 only consider k = 1 since we are only considering scenario A
     % frequency of 1st decision
     act1 = action(:,1,end); %action{k}(:,1,end);
     small = sum(act1 == 1);
@@ -230,7 +165,7 @@ for k = 1%:3
     ylabel('Frequency')
     
     % plot cdfs
-    subplot(3,8,k*8-4:k*8)
+    subplot(3,8,k*8-4:k*8) 
     totalCostFlex = sum(totalCostTime(:,:,1),2);%sum(totalCostTime{k}(:,:,1),2)
     totalCostLarge = sum(totalCostTime(:,:,2),2); %sum(totalCostTime{k}(:,:,2),2);
     totalCostSmall = sum(totalCostTime(:,:,3),2); %sum(totalCostTime{k}(:,:,3),2)
@@ -276,13 +211,16 @@ for k = 1%:3
         text(255, .15, 'Scenario C: High demand - 0% DR')
     end
 end
-s = suptitle('Simulated infrastructure decisions and costs (N=1000)');
+if runParam.optReservoir
+    s = sgtitle('Optimized reservoir simulated infrastructure decisions and costs (N=1000)')
+else
+    s = sgtitle('Non-Optimized reservoir simulated infrastructure decisions and costs (N=1000)')
+end
 s.FontWeight = 'bold';
 font_size = 12;
 allaxes = findall(f, 'type', 'axes');
 set(allaxes,'FontSize', font_size)
 set(findall(allaxes,'type','text'),'FontSize', font_size)
-
 
 figure_width = 8.5;
 figure_height = 8.5;
@@ -307,10 +245,9 @@ end
 
 %% Regret plot: Fig 6
 
-%load('/Users/sarahfletcher/Dropbox (MIT)/Mombasa_Climate/SDP/results67847_19_Mar_2018_21_47_26_base.mat')
+%load('nonopt_SDPSim_results_domCost1.mat') %quadratic, domShortage = 1, opt
 
-% load('results_05_Dec_2020_12_33_30.mat'); %q
-
+if fig6 == true
 % Regret for last time period
 bestOption = 0;
 
@@ -318,7 +255,7 @@ P_regret = [68 78 88];
 totalCost = squeeze(sum(totalCostTime(:,:,1:3), 2));
 meanCostPnow = zeros(length(P_regret),3);
 for i = 1:length(P_regret)
-    % Find simulaitons with this level of precip
+    % Find simulations with this level of precip
     ind_P = P_state(:,end) == P_regret(i);
     % Get average cost of each infra option in that P level
     totalCostPnow = totalCost(ind_P,:);
@@ -348,3 +285,6 @@ allaxes = findall(f, 'type', 'axes');
 set(allaxes,'FontSize', font_size)
 set(findall(allaxes,'type','text'),'FontSize', font_size)
 printsetup(f, 7, 5, 12, 1, 300, 1, 1, 'regret' )
+
+end
+

@@ -1,7 +1,6 @@
 %% Climate change uncertainty stochastic dynamic program (SDP)
 
-% This is the main script in the analysis: it integrates the Bayesian
-% statitiscal model results, CLIRUN rainfall-runoff model, and water
+% This is an adapted copy of the main script in the analysis: it uses the water
 % system/cost models into the forumulation of an SDP. The SDP develops
 % optimal policies for 1) which of three infrastructure alternatives to
 % choose in an initial planning period and 2) under what climate conditions
@@ -9,15 +8,36 @@
 % Carlo simulation on the uncertain climate states to assess the peformance
 % of the infrastructure policies developed by the SDP.
 
+% This script differs from the sdp_climate.m main script in that it allows
+% for the small and large dam capacities to be updated for use with the
+% genetic algorithm in wrapper_test.m. This script can be used to optimize
+% the flexible dam sizing for either the non-optimized reservoir
+% operations model or the DDP non-optimized reservoir operations models.
+
+% Optimized reservoir shortage costs have been pre-generated on the cluster for
+% each possible dam capacity. For each genetic algorithm stage for the
+% optimized reservoir operations model, pre-generated files are combined to
+% represent the small and large dam capacity options.
+
+% This model is currently developed for RCP8.5, but future work may expand
+% this script.
+
 
 %% Setup 
 
 % Set Project root folder andAdd subfolders to path; runs either on desktop 
 % or on a cluster using SLURM queueing system 
 if ~isempty(getenv('SLURM_JOB_ID'))
-    projpath = '/net/fs02/d2/sfletch/Mombasa_climate';
+    projpath = '/home/users/keaniw/Fletcher_2019_Learning_Climate';
+    jobid = getenv('SLURM_JOB_ID');
+    %folder = '/home/users/keaniw/Fletcher_2019_Learning_Climate/';
 else
-    projpath = '/Users/sarahfletcher/Dropbox (MIT)/Fletcher_2019_Learning_Climate';
+    projpath = 'C:/Users/kcuw9/Documents/Fletcher_2019_Learning_Climate';
+    jobid = 'na';
+    folder_optResults = ...
+        'C:/Users/kcuw9/Documents/Fletcher_2019_Learning_Climate/Optimize_flexible_capacity/post_process_opt_reservoir_results';
+    folder_nonoptResults = ...
+        'C:/Users/kcuw9/Documents/Fletcher_2019_Learning_Climate/Optimize_flexible_capacity/post_process_nonopt_reservoir_results';
 end
 addpath(genpath(projpath))
 
@@ -46,6 +66,10 @@ runParam.runSDP = true;
 % Number of years to generate in T, P, streamflow time series
 runParam.steplen = 20; 
 
+% Set Emissions Scenario
+emisScenario = {'RCP19' 'RCP26' 'RCP34' 'RCP45' 'RCP6' 'RCP7' 'RCP85'};
+runParam.setPathway = gaParam.setPathway;
+
 % If true, simulate runoff time series from T, P time series using CLIRUN. If false, load saved.
 runParam.runRunoff = false; 
 
@@ -64,13 +88,13 @@ runParam.calcTmat = false;
 % If true, perform DDP to optimize reservoir operatations in the water
 % system model. If false, use non-optimized fixed rule curve for reservoir
 % operations
-runParam.optReservoir = true;
-
-% The number of discrete reservoir storage states in the DDP optimization.
-runParam.discrStorage = 75;
+runParam.optReservoir = gaParam.optReservoir;
 
 % If true, calculate water shortage costs from runoff times series using water system model. If false, load saved.
-runParam.calcShortage = false; 
+runParam.calcShortage = true; 
+
+% If true, use pregenerated results to combine shortage cost files for different capacity options.
+runParam.ga = true;
 
 % Urban water demand scenarios (low = 150,000; high = 300,000)[m3/d](Fletcher 2019)
 runParam.domDemand = 150000; 
@@ -87,13 +111,18 @@ runParam.desalCapacity = [60 80];
 runParam.runoffLoadName = 'runoff_by_state_Mar16_knnboot_1t';
 
 % If using pre-saved shortage costs, name of .mat file to load
-%runParam.shortageLoadName = 'shortage_costs_28_Feb_2018_17_04_42';
+runParam.shortageLoadName = 'shortage_costs_28_Feb_2018_17_04_42';
 
-% If using pre-saved shortage costs, name of .mat file to load
-runParam.shortageLoadName = 'ddp_results';
+% If using pre-saved shortage costs of the optimized reservoir, name of .mat file to load
+if runParam.optReservoir == false
+    runParam.shortageLoadName = 'ddp_results_domCost1_80_120'; 
+else
+     runParam.shortageLoadName = 'shortage_costs_nonopt_domCost1_80_120'; %to get to the same magnitude of Sarah's, divide shortageCost/100 (E9)
+end
+
 
 % If true, save results
-runParam.saveOn = true;
+runParam.saveOn = false;
 
 % Set up climate parameters
 climParam = struct;
@@ -109,20 +138,26 @@ climParam.numSampTS = 100;
 % the state space in order to ensure state space validity
 climParam.checkBins = false;
 
-
 % Set up cost parameters; vary for sensitivity analysis
 costParam = struct;
 
 %costParam.yieldprctl = 50;
 
 % Value of shortage penalty for domestic use [$/m3]
-costParam.domShortage = 5; % Fletcher et al. (2019) utilized 5
+costParam.domShortage = 1; % Fletcher et al. (2019) utilized 5
+
+% To test different values of domShortage post-running on the cluster, use
+% this parameter to scale domShortage values/shortage cost results:
+costParam.scaleDomShortage = 1/100;
 
 % Value of shortage penalty for ag use [$/m3]
 costParam.agShortage = 0;
 
 % Discount rate
 costParam.discountrate = .03;
+
+% Capital Cost Increase Rate for Flex Dam
+costParam.PercFlex = .07;
 
 %% SDP State and Action Definitions 
 
@@ -165,7 +200,7 @@ T_Precip_abs = zeros(M_P_abs,M_P_abs,N);
 % State space for capacity variables
 s_C = 1:4; % 1 - small;  2 - large; 3 - flex, no exp; 4 - flex, exp
 M_C = length(s_C);
-storage = [80 120]; % small dam, large dam capacity in MCM
+storage = [x(1) x(2)]; % small dam, large dam capacity in MCM
 
 % Actions: Choose dam option in time period 1; expand dam in future time
 % periods
@@ -181,12 +216,15 @@ if ~runParam.desalOn
     % dam costs
     infra_cost(2) = storage2damcost(storage(1),0);
     infra_cost(3) = storage2damcost(storage(2),0);
-    [infra_cost(4), infra_cost(5)] = storage2damcost(storage(1), storage(2));
+    [infra_cost(4), infra_cost(5)] = storage2damcost(storage(1), storage(2),costParam.PercFlex);
     percsmalltolarge = (infra_cost(3) - infra_cost(2))/infra_cost(2);
     flexexp = infra_cost(4) + infra_cost(5);
-    diffsmalltolarge = infra_cost(3) - infra_cost(2);
-    shortagediff = (infra_cost(3) - infra_cost(2))/ (costParam.domShortage * 1e6);
-    
+    diffsmalltolarge = infra_cost(3) - infra_cost(2); %large capacity cost - small capacity cost
+    shortagediff_linear = (infra_cost(3) - infra_cost(2))/ (costParam.domShortage * 1e6); % This is what was originally in the SDP
+    % Below is the shortage difference utilizing the quadratic costing
+    % method
+    shortagediff = sqrt((infra_cost(3)-infra_cost(2))/(costParam.domShortage *costParam.scaleDomShortage * 1e6)); % Updated for quadratic costing formulation?
+
 else
     % Planning scenario C: dam exists, make decision about new desalination plant
     
@@ -208,11 +246,12 @@ end
 % Bayesian statistical model
 
 if runParam.calcTmat
-    load('BMA_results_deltap05T_p2P07-Feb-2018 20:18:49.mat')
+    load('BMA_results_RCP85_2020_11-14.mat')
     [T_Temp, T_Precip, ~, ~, ~, ~] = bma2TransMat( NUT, NUP, s_T, s_P, N, climParam);
-    save('T_Temp_Precip', 'T_Temp', 'T_Precip')    
+    T_name = strcat('T_Temp_Precip_', runParam.setPathway); % save a different transition matrix file for different emissions pathways
+    save(T_name, 'T_Temp', 'T_Precip')
 else
-    load('T_Temp_Precip') 
+    load('T_Temp_Precip_RCP85B') 
 end
 
 % Prune state space -- no need to calculate policies for T and P states
@@ -265,7 +304,7 @@ if runParam.runRunoff
     runoff = cell(M_T_abs, M_P_abs, N);
 
 
-    % Set up parallel for running on cluster with SLRUM queueing system
+    % Set up parallel for running on cluster with SLURM queueing system
     pc = parcluster('local');
     if ~isempty(getenv('SLURM_JOB_ID'))
         parpool(pc, str2num(getenv('SLURM_CPUS_ON_NODE')));
@@ -335,97 +374,121 @@ end
 
 %% Use reservoir operation model to calculate yield and shortage costs
 
-if runParam.calcShortage
-
-    unmet_ag = nan(M_T_abs, M_P_abs, length(storage), N);   % Unmet demand for agriculture use
-    unmet_dom = nan(M_T_abs, M_P_abs, length(storage), N);  % Unmet demand for domestic use
-    unmet_ag_squared = nan(M_T_abs, M_P_abs, length(storage), N); % Squared unmet agriculuture demands
-    unmet_dom_squared = nan(M_T_abs, M_P_abs, length(storage), N); % Squared unmet domestic demands
-    yield = nan(M_T_abs, M_P_abs, length(storage), N);  % Yield from reservoir
-    desal = cell(M_T_abs, M_P_abs, length(storage));    % Production of desalinated water
-
-    for t = 1 % Consider N = 1 assuming that the hydrological model and reservoir operations do not vary significantly between planning periods (N)
+if runParam.ga % use the pre-generated files to fast-track optimization
+    % Preallocate final combined variables
+    shortageCost = NaN(M_T_abs, M_P_abs, length(storage), N);
+    s_small = string(storage(1));
+    s_large = string(storage(2));
+    if runParam.optReservoir
+        s_small_filename = strcat('ddp_shortage_cost_domCost',string(costParam.domShortage),'_',string(runParam.setPathway),'_s',s_small,'.mat');
+        s_large_filename = strcat('ddp_shortage_cost_domCost',string(costParam.domShortage),'_',string(runParam.setPathway),'_s',s_large,'.mat');
+        shortageCost_small = load(s_small_filename,'shortageCost').shortageCost;
+        shortageCost_large = load(s_large_filename,'shortageCost').shortageCost;
+        shortageCost(:,:,1,1) = shortageCost_small;
+        shortageCost(:,:,2,1) = shortageCost_large;
+    else
+        s_small_filename = strcat('nonopt_shortage_cost_domCost',string(costParam.domShortage),'_',string(runParam.setPathway),'_s',s_small,'.mat');
+        s_large_filename = strcat('nonopt_shortage_cost_domCost',string(costParam.domShortage),'_',string(runParam.setPathway),'_s',s_large,'.mat');
+        shortageCost_small = load(s_small_filename,'shortageCost').shortageCost;
+        shortageCost_large = load(s_large_filename,'shortageCost').shortageCost;
+        shortageCost(:,:,1,1) = shortageCost_small;
+        shortageCost(:,:,2,1) = shortageCost_large;
+    end
+else % not the genetic algorithm: calculate the shortage costs in the script
+    if runParam.calcShortage
         
-        index_s_p_thisPeriod = index_s_p_time{t}; 
+        unmet_ag = nan(M_T_abs, M_P_abs, length(storage), N);   % Unmet demand for agriculture use
+        unmet_dom = nan(M_T_abs, M_P_abs, length(storage), N);  % Unmet demand for domestic use
+        unmet_ag_squared = nan(M_T_abs, M_P_abs, length(storage), N); % Squared unmet agriculuture demands
+        unmet_dom_squared = nan(M_T_abs, M_P_abs, length(storage), N); % Squared unmet domestic demands
+        yield = nan(M_T_abs, M_P_abs, length(storage), N);  % Yield from reservoir
+        desal = cell(M_T_abs, M_P_abs, length(storage));    % Production of desalinated water
         
-        for index_s_p = 1:length(s_P_abs)
-
-            index_s_t_thisPeriod = index_s_t_time{t}; 
-            for index_s_t= 1:length(s_T_abs)
-
-                for s = 1:2 % Corresponds to small and large reservoir storage scenarios
+        for t = 1 % Consider N = 1 assuming that the hydrological model and reservoir operations do not vary significantly between planning periods (N)
+            
+            index_s_p_thisPeriod = index_s_p_time{t};
+            
+            for index_s_p = 1:length(s_P_abs)
+                
+                index_s_t_thisPeriod = index_s_t_time{t};
+                for index_s_t= 1:length(s_T_abs)
                     
-                    % Two options depending on planning scenario from Table
-                    % 1: In scenarios A and B, with low demand, only the
-                    % dam is modeled, and different levels of capacity in
-                    % the state space corresponds to different reservoir
-                    % volumes (desalOn = false). In scenario C, a
-                    % desalination plant is modeled to support higher
-                    % demand > MAR. In this case (desalOn = true), the
-                    % state space corresponds to different desalination
-                    % capacity volumes, assuming the large volume of
-                    % reservoir storage.
-                    
-                    if ~runParam.desalOn
-                        % vary storage, no desal
-                        [yield_mdl, K, dmd, unmet_dom_mdl, unmet_ag_mdl, desalsupply, desalfill]  = ...
-                            runoff2yield(runoff{index_s_t,index_s_p,t}, T_ts{index_s_t,t}, P_ts{index_s_p,t}, storage(s), 0, runParam, climParam, costParam);
-                    else
-                        % large storage, vary desal
-                        [yield_mdl, K, dmd, unmet_dom_mdl, unmet_ag_mdl, desalsupply, desalfill]  = ...
-                            runoff2yield(runoff{index_s_t,index_s_p,t}, T_ts{index_s_t,t}, P_ts{index_s_p,t}, storage(2), runParam.desalCapacity(s), runParam, climParam, costParam);
+                    for s = 1:2 % Corresponds to small and large reservoir storage scenarios
+                        
+                        % Two options depending on planning scenario from Table
+                        % 1: In scenarios A and B, with low demand, only the
+                        % dam is modeled, and different levels of capacity in
+                        % the state space corresponds to different reservoir
+                        % volumes (desalOn = false). In scenario C, a
+                        % desalination plant is modeled to support higher
+                        % demand > MAR. In this case (desalOn = true), the
+                        % state space corresponds to different desalination
+                        % capacity volumes, assuming the large volume of
+                        % reservoir storage.
+                        
+                        if ~runParam.desalOn
+                            % vary storage, no desal
+                            [yield_mdl, K, dmd, unmet_dom_mdl, unmet_ag_mdl, desalsupply, desalfill]  = ...
+                                runoff2yield(runoff{index_s_t,index_s_p,t}, T_ts{index_s_t,t}, P_ts{index_s_p,t}, storage(s), 0, runParam, climParam, costParam);
+                        else
+                            % large storage, vary desal
+                            [yield_mdl, K, dmd, unmet_dom_mdl, unmet_ag_mdl, desalsupply, desalfill]  = ...
+                                runoff2yield(runoff{index_s_t,index_s_p,t}, T_ts{index_s_t,t}, P_ts{index_s_p,t}, storage(2), runParam.desalCapacity(s), runParam, climParam, costParam);
+                        end
+                        
+                        % OMITTED: 'Calculate ummet demand, allowing for 10% of domestic demand
+                        % to be unpenalized per 90% reliability goal(unmet_dom_90)'
+                        
+                        unmet_ag(index_s_t, index_s_p, s, t) = mean(sum(unmet_ag_mdl,2));
+                        unmet_dom(index_s_t, index_s_p, s, t) = mean(sum(unmet_dom_mdl,2));
+                        unmet_ag_squared(index_s_t, index_s_p, s, t) = mean(sum(unmet_ag_mdl.^2,2));
+                        unmet_dom_squared(index_s_t, index_s_p, s, t) = mean(sum(unmet_dom_mdl.^2,2));
+                        yield(index_s_t, index_s_p, s, t) = mean(sum(yield_mdl,2));
+                        if runParam.desalOn
+                            desal{index_s_t, index_s_p, s} = desalsupply + desalfill;
+                        end
+                        
                     end
                     
-                    % OMITTED: 'Calculate ummet demand, allowing for 10% of domestic demand
-                    % to be unpenalized per 90% reliability goal(unmet_dom_90)'
-
-                    unmet_ag(index_s_t, index_s_p, s, t) = mean(sum(unmet_ag_mdl,2));
-                    unmet_dom(index_s_t, index_s_p, s, t) = mean(sum(unmet_dom_mdl,2));
-                    unmet_ag_squared(index_s_t, index_s_p, s, t) = mean(sum(unmet_ag_mdl.^2,2)); 
-                    unmet_dom_squared(index_s_t, index_s_p, s, t) = mean(sum(unmet_dom_mdl.^2,2)); 
-                    yield(index_s_t, index_s_p, s, t) = mean(sum(yield_mdl,2));
-                    if runParam.desalOn
-                        desal{index_s_t, index_s_p, s} = desalsupply + desalfill;
-                    end
+                    %stateMsg = strcat('s_p =', num2str(index_s_p), '/ ', num2str(length(s_P_abs)), ', s_t=', num2str(index_s_t), '/  ',  num2str(length(s_T_abs)));
+                    %disp(stateMsg)
                     
                 end
-                
-                stateMsg = strcat('s_p =', num2str(index_s_p), '/ ', num2str(length(s_P_abs)), ', s_t=', num2str(index_s_t), '/  ',  num2str(length(s_T_abs)));
-                disp(stateMsg)
-
             end
         end
-    end
-    
-    % Calculate shortage costs incurred for unmet demand, using
-    % differentiated costs for agriculture and domestic shortages and
-    % quadratic formulation
-    shortageCost =  (unmet_ag_squared * costParam.agShortage + unmet_dom_squared * costParam.domShortage) * 1E6; 
-    
-    % In planning scenario C with the desalination place, also calculate
-    % discounted cost of oeprating the desalination plant
-    if runParam.desalOn
-
-        desal_opex = nan(M_T_abs, M_P_abs, length(storage), N);
-        for t = 1:N
-            discountfactor =  repmat((1+costParam.discountrate) .^ ((t-1)*runParam.steplen+1:1/12:t*runParam.steplen+11/12), 100, 1);
-            desal_opex(:,:,:,t) = cell2mat(cellfun(@(x) mean(sum(opex_cost * x ./ discountfactor, 2)), desal, 'UniformOutput', false));
-        end
+        
+        % Calculate shortage costs incurred for unmet demand, using
+        % differentiated costs for agriculture and domestic shortages and
+        % quadratic formulation
+        shortageCost =  (unmet_ag_squared * costParam.agShortage + unmet_dom_squared * costParam.domShortage) * 1E6;
+        
+        % In planning scenario C with the desalination place, also calculate
+        % discounted cost of oeprating the desalination plant
+        if runParam.desalOn
+            
+            desal_opex = nan(M_T_abs, M_P_abs, length(storage), N);
+            for t = 1:N
+                discountfactor =  repmat((1+costParam.discountrate) .^ ((t-1)*runParam.steplen+1:1/12:t*runParam.steplen+11/12), 100, 1);
+                desal_opex(:,:,:,t) = cell2mat(cellfun(@(x) mean(sum(opex_cost * x ./ discountfactor, 2)), desal, 'UniformOutput', false));
+            end
         else
             desal_opex = [];
+        end
+        
+        if runParam.saveOn
+            savename_shortageCost = strcat('shortage_costs', jobid,'_', datetime);
+            save(savename_shortageCost, 'shortageCost', 'yield', 'unmet_ag', 'unmet_dom', 'unmet_ag_squared', 'unmet_dom_squared','desal_opex')
+        end
+    else
+        load(runParam.shortageLoadName);
     end
-    
-    savename_shortageCost = strcat('shortage_costs', jobid,'_', datetime);
-    save(savename_shortageCost, 'shortageCost', 'yield', 'unmet_ag', 'unmet_dom', 'unmet_ag_squared', 'unmet_dom_squared','desal_opex')
-
-else
-    load(runParam.shortageLoadName);
 end
 
-    
 %% Solve SDP optimal policies using backwards recursion
 
 if runParam.runSDP
+    
+shortageCost = shortageCost.*costParam.scaleDomShortage;
 
 % Initialize best value and best action matrices
 % Temperature states x precipitaiton states x capacity states, time
@@ -484,8 +547,8 @@ for t = linspace(N,1,N)
                 for index_a = 1:num_a_exp
                     a = a_exp_thisPeriod(index_a);
                     
-                    stateMsg = strcat('t=', num2str(t), ', st=', num2str(st), ', sp=', num2str(sp), ', sc=', num2str(sc), ', a=', num2str(a));
-                    disp(stateMsg)
+                    %stateMsg = strcat('t=', num2str(t), ', st=', num2str(st), ', sp=', num2str(sp), ', sc=', num2str(sc), ', a=', num2str(a));
+                    %disp(stateMsg)
 
                     % Calculate costs 
                     
@@ -797,8 +860,3 @@ end
 
 
 end
-
-
-
-
-

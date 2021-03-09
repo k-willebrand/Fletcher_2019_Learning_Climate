@@ -3,20 +3,21 @@
 
 %% Setup 
 
-% Set Project root folder andAdd subfolders to path; runs either on desktop 
+% Set Project root folder and Add subfolders to path; runs either on desktop 
 % or on a cluster using SLURM queueing system 
 if ~isempty(getenv('SLURM_JOB_ID'))
-    projpath = '/net/fs02/d2/sfletch/Mombasa_climate';
+    projpath = '/home/users/keaniw/Fletcher_2019_Learning_Climate';
     jobid = getenv('SLURM_JOB_ID');
+    
 else
-    projpath = '/Users/sarahfletcher/Dropbox (MIT)/Fletcher_2019_Learning_Climate';
+    projpath = 'C:/Users/kcuw9/Documents/Fletcher_2019_Learning_Climate';
     jobid = 'na';
 end
 addpath(genpath(projpath))
 mkdir('reservoir_results')
 
 
-%% Parameters
+%% Parameter
 
 % Set up run paramters
 % Two purposes: 1) different pieces can be run independently using
@@ -100,7 +101,7 @@ costParam = struct;
 %costParam.yieldprctl = 50;
 
 % Value of shortage penalty for domestic use [$/m3]
-costParam.domShortage = 5;
+costParam.domShortage = 1;
 
 % Value of shortage penalty for ag use [$/m3]
 costParam.agShortage = 0;
@@ -150,7 +151,7 @@ T_Precip_abs = zeros(M_P_abs,M_P_abs,N);
 % State space for capacity variables
 s_C = 1:4; % 1 - small;  2 - large; 3 - flex, no exp; 4 - flex, exp
 M_C = length(s_C);
-storage = [80 120]; % small dam, large dam capacity in MCM
+storage = [50 55]; % small dam, large dam capacity in MCM
 
 % Actions: Choose dam option in time period 1; expand dam in future time
 % periods
@@ -203,19 +204,20 @@ load(runParam.runoffLoadName);
 % pc.JobStorageLocation
 % 
 % 
-% if ~isempty(getenv('SLURM_JOB_ID'))
-%     poolobj = parpool(pc, str2num(getenv('SLURM_NTASKS')));
-%     fprintf('Number of workers: %g\n', poolobj.NumWorkers)
-% end
+if ~isempty(getenv('SLURM_JOB_ID'))
+     %poolobj = parpool('local', str2num(getenv('SLURM_NTASKS')));
+     poolobj = parpool('local', str2num(getenv('SLURM_CPUS_PER_TASK')));
+     fprintf('Number of workers: %g\n', poolobj.NumWorkers)
+end
 
-date='20201203'
-t = 1
+date='20210214'
+t = 1;
 
-parfor index_s_p = 32 % 1:length(s_P_abs) (32)
+parfor index_s_p = 1:length(s_P_abs)
     for index_s_t= 1:length(s_T_abs) 
-        for s = 2 % 1:2
-             savename_shortageCost = strcat('cluster_shortage_costs_st',...
-                 num2str(index_s_t),'_sp',num2str(index_s_p),'_s',num2str(s),'_', date, '.mat') % note - removed from name "reservoir_results/"
+        for s = 1:length(storage)
+             savename_shortageCost = strcat('reservoir_results/cluster_shortage_costs_st',...
+                 num2str(index_s_t),'_sp',num2str(index_s_p),'_s',num2str(storage(s)),'_', date, '.mat') % note - removed from name "reservoir_results/"
              if isfile(savename_shortageCost)
                  fprintf('File already exists: %s', savename_shortageCost)
              else

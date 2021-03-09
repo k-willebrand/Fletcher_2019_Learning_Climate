@@ -47,7 +47,7 @@ runParam.runSDP = true;
 runParam.steplen = 20; 
 
 % Set Emissions Scenario
-emisScenario = {'RCP19' 'RCP26' 'RCP34' 'RCP45' 'RCP6' 'RCP7' 'RCP85'}
+emisScenario = {'RCP19' 'RCP26' 'RCP34' 'RCP45' 'RCP6' 'RCP7' 'RCP85'};
 runParam.setPathway = emisScenario{7}
 
 % If true, simulate runoff time series from T, P time series using CLIRUN. If false, load saved.
@@ -71,7 +71,7 @@ runParam.calcTmat = false;
 runParam.optReservoir = false;
 
 % If true, calculate water shortage costs from runoff times series using water system model. If false, load saved.
-runParam.calcShortage = false; 
+runParam.calcShortage = true; 
 
 % Urban water demand scenarios (low = 150,000; high = 300,000)[m3/d](Fletcher 2019)
 runParam.domDemand = 150000; 
@@ -88,18 +88,20 @@ runParam.desalCapacity = [60 80];
 runParam.runoffLoadName = 'runoff_by_state_Mar16_knnboot_1t';
 
 % If using pre-saved shortage costs, name of .mat file to load
-%runParam.shortageLoadName = 'shortage_costs_28_Feb_2018_17_04_42';
+runParam.shortageLoadName = 'shortage_costs_28_Feb_2018_17_04_42';
 
 % If using pre-saved shortage costs of the optimized reservoir, name of .mat file to load
 if runParam.optReservoir == true
-    runParam.shortageLoadName = 'ddp_results_domCost1_80_120'; 
+    %runParam.shortageLoadName = 'ddp_results_domCost1_80_120'; 
+    runParam.shortageLoadName = 'opt_shortage_costs_domCost1_RCP85_s80120';
 else
-     runParam.shortageLoadName = 'shortage_costs_nonopt_domCost1_80_120'; %to get to the same magnitude of Sarah's, divide shortageCost/100 (E9)
+     %runParam.shortageLoadName = 'shortage_costs_nonopt_domCost1_80_120'; %to get to the same magnitude of Sarah's, divide shortageCost/100 (E9)
+     runParam.shortageLoadName = 'nonopt_shortage_costs_domCost1_RCP85_s80120';
 end
 
 
 % If true, save results
-runParam.saveOn = true;
+runParam.saveOn = false;
 
 % Set up climate parameters
 climParam = struct;
@@ -132,6 +134,9 @@ costParam.agShortage = 0;
 
 % Discount rate
 costParam.discountrate = .03;
+
+% Capital Cost Increase Rate for Flex Dam
+costParam.PercFlex = 0; % Jenny used 0.07
 
 %% SDP State and Action Definitions 
 
@@ -190,7 +195,7 @@ if ~runParam.desalOn
     % dam costs
     infra_cost(2) = storage2damcost(storage(1),0);
     infra_cost(3) = storage2damcost(storage(2),0);
-    [infra_cost(4), infra_cost(5)] = storage2damcost(storage(1), storage(2));
+    [infra_cost(4), infra_cost(5)] = storage2damcost(storage(1), storage(2),costParam.PercFlex);
     percsmalltolarge = (infra_cost(3) - infra_cost(2))/infra_cost(2);
     flexexp = infra_cost(4) + infra_cost(5);
     diffsmalltolarge = infra_cost(3) - infra_cost(2); %large capacity cost - small capacity cost
@@ -220,12 +225,12 @@ end
 % Bayesian statistical model
 
 if runParam.calcTmat
-    load('BMA_results_deltap05T_p2P07-Feb-2018 20:18:49.mat')
+    load('BMA_results_RCP85_2020_11-14.mat')
     [T_Temp, T_Precip, ~, ~, ~, ~] = bma2TransMat( NUT, NUP, s_T, s_P, N, climParam);
     T_name = strcat('T_Temp_Precip_', runParam.setPathway) % save a different transition matrix file for different emissions pathways
     save(T_name, 'T_Temp', 'T_Precip')
 else
-    load('T_Temp_Precip') 
+    load('T_Temp_Precip_RCP85B') % updated from Jenny
 end
 
 % Prune state space -- no need to calculate policies for T and P states
@@ -278,7 +283,7 @@ if runParam.runRunoff
     runoff = cell(M_T_abs, M_P_abs, N);
 
 
-    % Set up parallel for running on cluster with SLRUM queueing system
+    % Set up parallel for running on cluster with SLURM queueing system
     pc = parcluster('local');
     if ~isempty(getenv('SLURM_JOB_ID'))
         parpool(pc, str2num(getenv('SLURM_CPUS_ON_NODE')));
@@ -428,9 +433,10 @@ if runParam.calcShortage
             desal_opex = [];
     end
     
-    savename_shortageCost = strcat('shortage_costs', jobid,'_', datetime);
-    save(savename_shortageCost, 'shortageCost', 'yield', 'unmet_ag', 'unmet_dom', 'unmet_ag_squared', 'unmet_dom_squared','desal_opex')
-
+    if runParam.saveOn
+        savename_shortageCost = strcat('shortage_costs', jobid,'_', datetime);
+        save(savename_shortageCost, 'shortageCost', 'yield', 'unmet_ag', 'unmet_dom', 'unmet_ag_squared', 'unmet_dom_squared','desal_opex')
+    end
 else
     load(runParam.shortageLoadName);
 end

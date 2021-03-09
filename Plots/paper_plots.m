@@ -3,7 +3,7 @@
 if true
 addpath(genpath('/Users/sarahfletcher/Documents/MATLAB/figure_tools'))
 %load('results67847_19_Mar_2018_21_47_26_base.mat')
-load('nonopt_SDPSim_results_domCost1.mat')
+%load('nonopt_SDPSim_results_domCost1.mat')
 end
 decade = {'2001-2020', '2021-2040', '2041-2060', '2061-2080', '2081-2100'};
 decadeline = {'2001-\newline2020', '2021-\newline2040', '2041-\newline2060', '2061-\newline2080', '2081-\newline2100'};

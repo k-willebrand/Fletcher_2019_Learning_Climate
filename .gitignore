@@ -13,6 +13,9 @@ Data/runoff_by_state_Mar16_knnboot_1t.mat
 Data/Mombasa_TandP.mat
 Data/Mwache_streamflow_monthly_1976to1990_JuneToMay_cumec.mat
 Data/BMA_results_RCP85_2020-11-14.mat
+Data/T_Temp_Precip_RCP85B.mat
 Data/ddp_results_domCost1_80_120.mat
 Data/shortage_costs_nonopt_domCost1_80_120.mat
+Data/nonopt_shortage_costs_domCost1_RCP85_s80120.mat
+Data/opt_shortage_costs_domCost1_RCP85_s80120.mat
 Icon
