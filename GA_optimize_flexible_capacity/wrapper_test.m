@@ -1,7 +1,13 @@
-%% January 2021
-% This file includes multiple tests for a wrapper function to run different
-% static or flex dam sizing options, or using a genetic algorithm to pick
-% dam sizes
+%% Wrapper script for sdp_climate_opt_flex.m - January 2021
+% This file is a wrapper function to find the optimal flexible dam design
+% for either a DDP optimized or greedy algorithm operated dam using a genetic
+% algorithm approach. The script finds the small and large dam capacities 
+% [50:5:150] MCM that minimize the 95 percentile of total costs from 
+% forward simultions.
+
+% Note: To optimize the dam design for a DDP optimized dam, set 
+% gaParam.optReservoir = true; for greedy algorithm operated dam, set
+% gaParam.optReservoir = true.
 
 % This version has been updated by Keani (new sizing constraints)
 

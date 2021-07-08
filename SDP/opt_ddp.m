@@ -22,15 +22,19 @@ function  [yield_ddp,release_ddp, K_ddp]  = opt_ddp(net_inflow, eff_storage, dmd
 
 %% == SETUP ==
 n = length(net_inflow); % number of decision periods (months)
-K_ddp = zeros(1,n+1);
-yield_ddp = zeros(1,n);
-release_ddp = zeros(1,n);
+K_ddp = zeros(1,n+1); % MCM
+yield_ddp = zeros(1,n); % MCM/Y
+release_ddp = zeros(1,n); % MCM/Y
+delta = 1/12; % monthly time step (Y)
 
-K0 = eff_storage; % assume initial effective reservoir storage is full
-demand = dmd_dom + dmd_ag;
+%K0 = eff_storage;
+K0 = 30; % MCM assume constant initial reservoir storage
+demand = dmd_dom + dmd_ag; % MCM/Y
 
-nK = 150; % assume 150 discrete effective storage states 
-discr_K = linspace(0,eff_storage,nK); % define the nK possible discrete effective storage states
+%nK = 150; % assume 150 discrete effective storage states 
+%discr_K = linspace(0,eff_storage,nK); % define the nK possible discrete effective storage states
+discr_K = [0:1:eff_storage]; % MCM
+nK = length(discr_K);
 discr_q = net_inflow; % consider n discrete net inflow disturbances(equals net_inflows)
 
 costs_table = cell(nK,n); % create a cell array structure to store shortage costs
@@ -54,12 +58,13 @@ for t = 1:n
         
         % define minimum and maximum possible releases
         min_release = 0; % limit the minimum release to 0 (or env_flow?)
-        max_release = K_state+q_now; % limit max release to current storage + net inflow
+        %max_release = K_state+q_now; % limit max release to current storage + net inflow
+        max_release = K_state/delta+q_now; % MCM/Y
         
         % Calculate all possible release decisions from K_state relative
         % to the defined discrete storage states (discr_K),correcting for 
         % releases outside the calculated max and min limits
-        poss_release = K_state - discr_K + q_now;
+        poss_release = (K_state - discr_K)/delta + q_now; % MCM/Y
         poss_release(poss_release<min_release)= []; % release < minimum release not possible 
         poss_release(poss_release>max_release)= max_release;
         % STORE POSSIBLE RELEASES FOR STATE (k) AND PERIOD (t)
@@ -74,10 +79,10 @@ for t = 1:n
             if poss_release(i)>=targ_release
                 poss_costs(1,i) = 0; 
             else % insufficient release, domestic demand is met first
-                poss_unmet = max(targ_release - poss_release, 0);
-                poss_unmet_ag = min(poss_unmet, targ_dmd_ag);
-                poss_unmet_dom = poss_unmet - poss_unmet_ag;
-                poss_costs(1,i) = costParam.domShortage*(poss_unmet_dom(i))^2 +costParam.agShortage*(poss_unmet_ag(i))^2;
+                poss_unmet = max((targ_release - poss_release)*delta, 0); % MCM
+                poss_unmet_ag = min(poss_unmet, targ_dmd_ag*delta); % MCM
+                poss_unmet_dom = poss_unmet - poss_unmet_ag; % MCM
+                poss_costs(1,i) = (costParam.domShortage*(poss_unmet_dom(i))^2 +costParam.agShortage*(poss_unmet_ag(i))^2)*1E6;
             end
         end
         % STORE POSSIBLE SHORTAGE COSTS FOR STATE (k) AND PERIOD (t)
@@ -132,6 +137,6 @@ for t = 1:n
     yield_ddp(t) = min(demand(t),release_ddp(t)); %for calculation of yield, overflow is not be considered
     
     %Calculate the next effective storage based on optimal release
-    K_ddp(1,t+1)=K_opt(idx_r,t+1);
+    K_ddp(1,t+1)=K_opt(idx_r,t+1); % MCM
 end
 end

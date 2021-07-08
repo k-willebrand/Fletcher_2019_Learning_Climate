@@ -1,4 +1,4 @@
-%% Script to run optimized reservoir operations on cluster 
+%% Script to run DDP optimized reservoir operations on cluster 
 
 
 %% Setup 
@@ -54,9 +54,6 @@ runParam.calcTmat = false;
 % operations
 runParam.optReservoir = true;
 
-% The number of discrete reservoir storage states in the DDP optimization.
-runParam.discrStorage = 75;
-
 % If true, calculate water shortage costs from runoff times series using water system model. If false, load saved.
 runParam.calcShortage = true; 
 
@@ -72,7 +69,8 @@ runParam.desalOn = false;
 runParam.desalCapacity = [60 80];
 
 % If using pre-saved runoff time series, name of .mat file to load
-runParam.runoffLoadName = 'runoff_by_state_Mar16_knnboot_1t';
+%runParam.runoffLoadName = 'runoff_by_state_Mar16_knnboot_1t';
+runParam.runoffLoadName = 'runoff_by_state_June16_knnboot_1t';
 
 % If using pre-saved shortage costs, name of .mat file to load
 runParam.shortageLoadName = 'shortage_costs_28_Feb_2018_17_04_42';
@@ -98,8 +96,6 @@ climParam.checkBins = false;
 % Set up cost parameters; vary for sensitivity analysis
 costParam = struct;
 
-%costParam.yieldprctl = 50;
-
 % Value of shortage penalty for domestic use [$/m3]
 costParam.domShortage = 1;
 
@@ -107,7 +103,7 @@ costParam.domShortage = 1;
 costParam.agShortage = 0;
 
 % Discount rate
-costParam.discountrate = .03;
+costParam.discountrate = 0.03;
 
 
 %% SDP State and Action Definitions 
@@ -151,40 +147,13 @@ T_Precip_abs = zeros(M_P_abs,M_P_abs,N);
 % State space for capacity variables
 s_C = 1:4; % 1 - small;  2 - large; 3 - flex, no exp; 4 - flex, exp
 M_C = length(s_C);
-storage = [50 55]; % small dam, large dam capacity in MCM
+storage = [80]; % small dam, large dam capacity in MCM
 
 % Actions: Choose dam option in time period 1; expand dam in future time
 % periods
 a_exp = 0:4; % 0 - do nothing; 1 - build small; 2 - build large; 3 - build flex
             % 4 - expand flex 
  
-% Define infrastructure costs            
-infra_cost = zeros(1,length(a_exp));
-if ~runParam.desalOn
-    
-    % Planning scenarios A and B with current demand: only model dam
-    
-    % dam costs
-    infra_cost(2) = storage2damcost(storage(1),0);
-    infra_cost(3) = storage2damcost(storage(2),0);
-    [infra_cost(4), infra_cost(5)] = storage2damcost(storage(1), storage(2));
-    percsmalltolarge = (infra_cost(3) - infra_cost(2))/infra_cost(2);
-    flexexp = infra_cost(4) + infra_cost(5);
-    diffsmalltolarge = infra_cost(3) - infra_cost(2);
-    shortagediff = (infra_cost(3) - infra_cost(2))/ (costParam.domShortage * 1e6);
-    
-else
-    % Planning scenario C: dam exists, make decision about new desalination plant
-    
-    % desal capital costs
-    [infra_cost(2),~,opex_cost] = capacity2desalcost(runParam.desalCapacity(1),0); % small
-    infra_cost(3) = capacity2desalcost(runParam.desalCapacity(2),0); % large
-    [infra_cost(4), infra_cost(5)] = capacity2desalcost(runParam.desalCapacity(1), runParam.desalCapacity(2));  
-    
-    % desal capital costs two individual plants
-    infra_cost(4) = infra_cost(2);
-    infra_cost(5) = capacity2desalcost(runParam.desalCapacity(2) - runParam.desalCapacity(1),0);
-end
 
 %% Load runoff
 
@@ -210,11 +179,12 @@ if ~isempty(getenv('SLURM_JOB_ID'))
      fprintf('Number of workers: %g\n', poolobj.NumWorkers)
 end
 
-date='20210214'
+date='20210701'
 t = 1;
 
 parfor index_s_p = 1:length(s_P_abs)
-    for index_s_t= 1:length(s_T_abs) 
+    %for index_s_t= 1:length(s_T_abs) 
+    for index_s_t= 1:size(runoff,1) % number of s_T_abs
         for s = 1:length(storage)
              savename_shortageCost = strcat('reservoir_results/cluster_shortage_costs_st',...
                  num2str(index_s_t),'_sp',num2str(index_s_p),'_s',num2str(storage(s)),'_', date, '.mat') % note - removed from name "reservoir_results/"

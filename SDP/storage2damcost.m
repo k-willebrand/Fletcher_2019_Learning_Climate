@@ -1,11 +1,13 @@
-function [dcost, ecost] = storage2damcost(storage, flex_storage, percFlex)
+function [dcost, ecost] = storage2damcost(storage, flex_storage, percFlex,  percFlexExp)
 
 % if percFlex is not input, default to 0
 if ~exist('percFlex', 'var')
     percFlex = 0;
 end
 
-
+if ~exist('percFlexExp', 'var')
+    percFlexExp = 0.5;
+end
 % Load costs as a function of dam height and reservoir storage. These
 % values were taken from a dam cost tool developed the Mwache dam for: 
 % World Bank Group. (2015). Enhancing the Climate Resilience of Africa?s 
@@ -34,7 +36,7 @@ ecost = [];
 if flex_storage
     added_storage = flex_storage - storage;
     indexFlex = find(costmodel.storage == flex_storage);
-    ecost = added_storage * costmodel.unit_cost(indexFlex)*1.5; % 50% higher unit cost when increasing height
+    ecost = added_storage * costmodel.unit_cost(indexFlex)*(1 + percFlexExp); % 50% higher unit cost when increasing height
     dcost = dcost;
     
 end

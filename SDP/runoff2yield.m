@@ -17,8 +17,8 @@ end
 dmd_ag = repmat([2.5 1.5 0.8 2.0 1.9 2.9 3.6 0.6 0.5 0.3 0.2 3.1], numRuns,numYears);
 demand = dmd_dom + dmd_ag;
 dead_storage = 20;
-env_flow = 0;
-eff_storage = storage - dead_storage;
+env_flow = 0; % MCM/Y
+eff_storage = storage - dead_storage; % MCM
 
 [E]  = evaporation_sdp(storage, T, P, climParam, runParam);
 

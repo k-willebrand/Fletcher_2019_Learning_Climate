@@ -1,4 +1,4 @@
-function perc95 = run_model(x, gaParam)
+function perc95 = run_model(x, gaParam) % return 95 percentile total cost
 
 % Set project root folder and add subfolders to path; runs either on desktop 
 % or on a cluster using SLURM queueing system 

@@ -27,9 +27,10 @@ numYears = runParam.steplen;
 [numRuns,~] = size(T);
 
 % check numRuns correct
-dmd_dom = cmpd2mcmpy(runParam.domDemand) * ones(numRuns,12*numYears);
-dmd_ag = repmat([2.5 1.5 0.8 2.0 1.9 2.9 3.6 0.6 0.5 0.3 0.2 3.1], numRuns,numYears);
-demand = dmd_dom + dmd_ag;
+dmd_dom = cmpd2mcmpy(runParam.domDemand) * ones(numRuns,12*numYears); % MCM/Y
+%dmd_ag = repmat([2.5 1.5 0.8 2.0 1.9 2.9 3.6 0.6 0.5 0.3 0.2 3.1], numRuns,numYears); % MCM/month
+dmd_ag = repmat(12*[2.5 1.5 0.8 2.0 1.9 2.9 3.6 0.6 0.5 0.3 0.2 3.1], numRuns,numYears); % MCM/Y
+demand = dmd_dom + dmd_ag; % MCM/Y (monthly demand rate in MCM/Y)
 dead_storage = 20;
 env_flow = 0;
 
@@ -44,7 +45,8 @@ eff_storage = storage - dead_storage; %should have [60, 100]
 
 [E]  = evaporation_sdp(storage, T, P, climParam, runParam);
 net_inflow = inflow-env_flow-E;
-K0 = eff_storage; % assume reservoir storage is initially full
+%K0 = eff_storage; % assume reservoir storage is initially full
+K0 = 30; % MCM - assume constant initial storage
 
 for run=1:numRuns % for each possible temperature state
     [yield_ddp,~, K_ddp] = opt_ddp(net_inflow(run,:), eff_storage, dmd_dom(run,:), dmd_ag(run,:), costParam);
@@ -53,15 +55,17 @@ for run=1:numRuns % for each possible temperature state
 end
 
 % Ag demand is unmet first
+delta = 1/12; % time step in years
 yield_mdl = release;
-unmet_mdl = max(demand - release - desalsupply, 0);
-unmet_ag_mdl = min(unmet_mdl, dmd_ag);
-unmet_dom_mdl = unmet_mdl - unmet_ag_mdl;
+%unmet_mdl = max(demand - release - desalsupply, 0);
+unmet_mdl = max((demand - release - desalsupply)*delta, 0); % MCM
+unmet_ag_mdl = min(unmet_mdl, dmd_ag*delta); % MCM
+unmet_dom_mdl = unmet_mdl - unmet_ag_mdl; % MCM
 
 unmet_ag = mean(sum(unmet_ag_mdl,2));
 unmet_dom = mean(sum(unmet_dom_mdl,2));
-unmet_ag_squared = mean(sum(unmet_ag_mdl.^2,2));
-unmet_dom_squared = mean(sum(unmet_dom_mdl.^2,2));
+unmet_ag_squared = mean(sum(unmet_ag_mdl.^2,2)); % MCM
+unmet_dom_squared = mean(sum(unmet_dom_mdl.^2,2)); % MCM
 yield = mean(sum(yield_mdl,2));
 
 % Calculate shortage costs incurred for unmet demand, using
@@ -70,6 +74,7 @@ yield = mean(sum(yield_mdl,2));
 shortageCost =  (unmet_ag_squared * costParam.agShortage + unmet_dom_squared * costParam.domShortage) * 1E6;
 
 savename_shortageCost = strcat('reservoir_results/cluster_shortage_costs_st',num2str(index_s_t),'_sp',num2str(index_s_p),'_s',num2str(storage),'_', date)
-save(savename_shortageCost, 'shortageCost', 'yield', 'unmet_ag', 'unmet_dom', 'unmet_ag_squared', 'unmet_dom_squared')
+%save(savename_shortageCost, 'shortageCost', 'yield', 'unmet_ag', 'unmet_dom', 'unmet_ag_squared', 'unmet_dom_squared')
+save(savename_shortageCost, 'shortageCost')
 
 end

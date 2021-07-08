@@ -1,3 +1,65 @@
+%% DOCUMENTATION:
+% This is V3 of multiflex_sdp_climate.m (date: 6/7/2021)
+
+% DESCRIPTION:
+% This script parallels the structure of the script sdp_climate.m. The
+% current version of this script supports preloaded shortage costs to be 
+% loaded within the script so that the dimensions of the shortage costs data is
+% represents multiple flexible dam sizes(i.e., possible to set
+% runParam.calcShortage = false).
+
+% The updated SDP action space allows for dam expansion to optParam.numFlex number
+% of possible flexible expansion capacities with expanded capacities increasing
+% at an increment of optParam.flexIncr MCM  starting from the smallest
+% capacity, optParam.smallCap.
+
+% The capacity state space in the SDP now allows for: a small static option,
+% a large static option, and optParam.numFlex different expanded flexible 
+% dam capacities.
+
+% OPTIMAL DAM SIZE FROM THE SDP: 
+% if optParam.optFlex = 2, then the SDP forces the static dam option to
+% be selected initially so that the value function in the SDP corresponds to the
+% static dam.
+
+% if optParam.optFlex = 1, then the SDP forces the flexible dam option to
+% be selected initially so that the value function in the SDP corresponds to the
+% flexible dams.
+
+% if optParam.optFlex = 0, then the SDP does not force the flexible or static
+% dam option to be selected initially (selects whatever is the best
+% option). This is useful when selecting runParam.forwardSim = true.
+
+% NOTE: 
+% As calculation of the optimized reservoir operations via DDP 
+% is computationally time intensive,it is recommended to run the script
+% runParam.optReservoir = true only when runParam.calcShortage = false.)
+
+% If using pre-saved shortage costs, shortage cost files for flexible dam
+% will be created within the "calculate shortage cost section." Use
+% runParam.calcShortage = false to use preloaded data contained in the
+% folders 'post_process_nonopt_reservoir_results' and
+% 'post_process_opt_reservoir_results.'
+
+% ================== SETUP FOR FINDING OPTIMAL DESIGN =====================
+optParam = struct;
+
+% specify whether the SDP should optimize for a flexible or static
+% dam design. If (1), optimize design for a flexible dam. If (2),
+% optimize the design for a static dam. If (0), do not force dam design
+% decision in time period N = 1.
+optParam.optFlex = 0; 
+
+% initial small flexible storage. Values range 50:5:150 in the dam costmodel
+optParam.smallCap = 80; % MCM
+
+% number of possible flexible expansion capacities above initial small
+% storage
+optParam.numFlex = 4;
+
+% increment of flexible expansion capacities in MCM
+optParam.flexIncr = 10; % MCM
+
 %% Climate change uncertainty stochastic dynamic program (SDP)
 
 % This is the main script in the analysis: it integrates the Bayesian
@@ -31,9 +93,11 @@ datetime=strrep(datetime,' ','_');%Replace space with underscore
 
 %% Parameters
 
-% Set up run paramters
+% Set up run parameters
 % Two purposes: 1) different pieces can be run independently using
 % saved results and 2) different planning scenarios (table 1) can be run
+
+% ========================= GENERAL SCRIPT SETUP ==========================
 
 runParam = struct;
 
@@ -60,18 +124,18 @@ runParam.runTPts = false;
 runParam.runoffPostProcess = false; 
 
 % If true, use optimal policies from SDP to do Monte Carlo simulation to esimate performance
-runParam.forwardSim = false; 
+runParam.forwardSim = true; 
 
 % If true, calculate Bellman transition matrix from BMA results. If false, load saved.
 runParam.calcTmat = false; 
 
 % If true, perform DDP to optimize reservoir operatations in the water
-% system model. If false, use non-optimized fixed rule curve for reservoir
+% system model. If false, use non-optimized greedy algorithm for reservoir
 % operations
 runParam.optReservoir = false;
 
 % If true, calculate water shortage costs from runoff times series using water system model. If false, load saved.
-runParam.calcShortage = true; 
+runParam.calcShortage = false; 
 
 % Urban water demand scenarios (low = 150,000; high = 300,000)[m3/d](Fletcher 2019)
 runParam.domDemand = 150000; 
@@ -86,19 +150,6 @@ runParam.desalCapacity = [60 80];
 
 % If using pre-saved runoff time series, name of .mat file to load
 runParam.runoffLoadName = 'runoff_by_state_Mar16_knnboot_1t';
-
-% If using pre-saved shortage costs, name of .mat file to load
-runParam.shortageLoadName = 'shortage_costs_28_Feb_2018_17_04_42';
-
-% If using pre-saved shortage costs of the optimized reservoir, name of .mat file to load
-if runParam.optReservoir == true
-    %runParam.shortageLoadName = 'ddp_results_domCost1_80_120'; 
-    runParam.shortageLoadName = 'opt_shortage_costs_domCost1_RCP85_s80120';
-else
-     %runParam.shortageLoadName = 'shortage_costs_nonopt_domCost1_80_120'; %to get to the same magnitude of Sarah's, divide shortageCost/100 (E9)
-     runParam.shortageLoadName = 'nonopt_shortage_costs_domCost1_RCP85_s80120';
-end
-
 
 % If true, save results
 runParam.saveOn = false;
@@ -135,11 +186,11 @@ costParam.agShortage = 0;
 % Discount rate
 costParam.discountrate = .03;
 
-% Capital Cost Increase Rate for Flex Dam
+% Initial upfront capital cost increase if flexible dam is chosen
 costParam.PercFlex = 0; % Jenny used 0.07
 
-% Percent higher cost for intial construction of flexible dam
-percFlexExp = 0;
+% Expansion cost of flexible dam
+costParam.PercFlexExp = 0.5;
 
 %% SDP State and Action Definitions 
 
@@ -159,7 +210,7 @@ M_P = length(s_P);
 % Change in temperature from one time period to next
 climParam.T_min = 0;
 climParam.T_max = 1.5;
-climParam.T_delta = 0.05; % deg C (previously 0.05)
+climParam.T_delta = 0.05; % deg C (previously 0.05) -> will update to 0.50
 s_T = climParam.T_min: climParam.T_delta: climParam.T_max;
 climParam.T0 = s_T(1);
 climParam.T0_abs = 26;
@@ -180,14 +231,19 @@ P_bins = [s_P_abs-climParam.P_delta/2 s_P_abs(end)+climParam.P_delta/2];
 T_Precip_abs = zeros(M_P_abs,M_P_abs,N);
 
 % State space for capacity variables
-s_C = 1:4; % 1 - small;  2 - large; 3 - flex, no exp; 4 - flex, exp
+s_C = 1:3+optParam.numFlex; % 1 - small;  2 - large; 3 - flex, no exp; 
+                            % 4:end - flex, expanded to option X
 M_C = length(s_C);
-storage = [80 120]; % small dam, large dam capacity in MCM
+
+storage = zeros(1, optParam.numFlex + 1);
+storage(1) = optParam.smallCap;
+storage(2:end) = storage(1) + (1:optParam.numFlex)*optParam.flexIncr;
 
 % Actions: Choose dam option in time period 1; expand dam in future time
 % periods
-a_exp = 0:4; % 0 - do nothing; 1 - build small; 2 - build large; 3 - build flex
-            % 4 - expand flex 
+            
+a_exp = 0:3+optParam.numFlex; % 0 - do nothing; 1 - build small; 2 - build large; 
+                              %3 - build flex; 4:end - expand to flex option X
  
 % Define infrastructure costs            
 infra_cost = zeros(1,length(a_exp));
@@ -196,18 +252,23 @@ if ~runParam.desalOn
     % Planning scenarios A and B with current demand: only model dam
     
     % dam costs
-    infra_cost(2) = storage2damcost(storage(1),0);
-    infra_cost(3) = storage2damcost(storage(2),0);
-    [infra_cost(4), infra_cost(5)] = storage2damcost(storage(1), storage(2),costParam.PercFlex);
-    percsmalltolarge = (infra_cost(3) - infra_cost(2))/infra_cost(2);
-    flexexp = infra_cost(4) + infra_cost(5);
-    diffsmalltolarge = infra_cost(3) - infra_cost(2); %large capacity cost - small capacity cost
-    shortagediff_linear = (infra_cost(3) - infra_cost(2))/ (costParam.domShortage * 1e6); % This is what was originally in the SDP
-    % Below is the shortage difference utilizing the quadratic costing
-    % method
-    shortagediff = sqrt((infra_cost(3)-infra_cost(2))/(costParam.domShortage *costParam.scaleDomShortage * 1e6)); % Updated for quadratic costing formulation?
-
+    infra_cost(2) = storage2damcost(storage(1),0); % cost of small static
+    infra_cost(3) = storage2damcost(storage(end),0); % cost of large static
+    for i = 1:optParam.numFlex
+        [infra_cost(4), infra_cost(i+4)] = storage2damcost(storage(1), storage(i+1),costParam.PercFlex); % cost of flexible exp to option X
+    end
+    
+    %for each expanded threshold, calculate (from small expansion to larger
+    %expansion):
+    percsmalltolarge = (infra_cost(3) - infra_cost(2))/infra_cost(2); % static largest vs small static
+    diffsmalltolarge = infra_cost(3) - infra_cost(2);
+    shortagediff = sqrt((infra_cost(3)-infra_cost(2))/(costParam.domShortage *costParam.scaleDomShortage * 1e6));
+    flexexp = zeros(1,M_C-3);
+    for i=1:length(flexexp)
+        flexexp(i) = infra_cost(4) + infra_cost(4+i); % total expanded cost for each option
+    end
 else
+    
     % Planning scenario C: dam exists, make decision about new desalination plant
     
     % desal capital costs
@@ -374,8 +435,7 @@ if runParam.calcShortage
             index_s_t_thisPeriod = index_s_t_time{t}; 
             for index_s_t= 1:length(s_T_abs)
 
-                for s = 1:2 % Corresponds to small and large reservoir storage scenarios
-                    
+                for s = 1:length(storage) % for each capacity scenario, find shortage costs from operations
                     % Two options depending on planning scenario from Table
                     % 1: In scenarios A and B, with low demand, only the
                     % dam is modeled, and different levels of capacity in
@@ -383,7 +443,7 @@ if runParam.calcShortage
                     % volumes (desalOn = false). In scenario C, a
                     % desalination plant is modeled to support higher
                     % demand > MAR. In this case (desalOn = true), the
-                    % state space corresponds teo different desalination
+                    % state space corresponds to different desalination
                     % capacity volumes, assuming the large volume of
                     % reservoir storage.
                     
@@ -440,8 +500,25 @@ if runParam.calcShortage
         savename_shortageCost = strcat('shortage_costs', jobid,'_', datetime);
         save(savename_shortageCost, 'shortageCost', 'yield', 'unmet_ag', 'unmet_dom', 'unmet_ag_squared', 'unmet_dom_squared','desal_opex')
     end
-else
-    load(runParam.shortageLoadName);
+else % use the pre-calculated shortage cost files to fast-track calculations
+ 
+    % Preallocate final shortage cost matrix
+    shortageCost = NaN(M_T_abs, M_P_abs, length(storage), N);
+    if runParam.optReservoir % DDP calculated shortage costs
+        for i=1:length(storage)
+            s_state = string(storage(i));
+            s_state_filename = strcat('ddp_shortage_cost_domCost',string(costParam.domShortage),'_',string(runParam.setPathway),'_s',s_state,'.mat');
+            shortageCost_s_state = load(s_state_filename,'shortageCost').shortageCost;
+            shortageCost(:,:,i,1) = shortageCost_s_state;
+        end
+    else % greedy algorithm calculated shortage costs
+        for i=1:length(storage)
+            s_state = string(storage(i));
+            s_state_filename = strcat('nonopt_shortage_cost_domCost',string(costParam.domShortage),'_',string(runParam.setPathway),'_s',s_state,'.mat');
+            shortageCost_s_state = load(s_state_filename,'shortageCost').shortageCost;
+            shortageCost(:,:,i,1) = shortageCost_s_state;
+        end
+    end
 end
 
 %% Solve SDP optimal policies using backwards recursion
@@ -487,7 +564,13 @@ for t = linspace(N,1,N)
                 
                 % In first period decide what dam to build
                 if t == 1
+                    if optParam.optFlex == 1 % flexible dam
+                        a_exp_thisPeriod = 3; % force building of flexible dam at N = 1
+                    elseif optParam.optFlex == 2 % small static
+                        a_exp_thisPeriod = 1; % force building of small static dam at N = 1
+                    elseif optParam.optFlex == 0 % flexible or static (whatever is best option)
                     a_exp_thisPeriod = 1:3; % build a small, large, or flex dam
+                    end
                 else
                     % In later periods decide whether to expand or not if available
                     switch sc
@@ -496,8 +579,8 @@ for t = linspace(N,1,N)
                         case s_C(2) % Large
                             a_exp_thisPeriod = [0];
                         case s_C(3) % Flex, not expanded
-                            a_exp_thisPeriod = [0 4];
-                        case s_C(4) % Flex, expanded
+                            a_exp_thisPeriod = [0 a_exp(5:end)]; % not expand or expand to options X
+                        otherwise % Flex, any expanded option
                             a_exp_thisPeriod = [0];
                     end
                 end
@@ -515,22 +598,24 @@ for t = linspace(N,1,N)
                     % Select which capacity is currently available
                     if sc == 1 || sc == 3
                         short_ind = 1;    % small capacity
+                    elseif sc == 2 || sc == s_C(end)
+                        short_ind = length(storage);  % largest capacity
                     else
-                        short_ind = 2; % large capacity
+                        short_ind = sc - 2; % intermediate capacity X
                     end
-                    
+
                     % In first time period, assume have dam built
                     if t == 1
                         if a == 2
-                            short_ind = 2; % large capacity
+                            short_ind = length(storage); % largest capacity
                         else 
                             short_ind = 1;    % small capacity
                         end
                     end
                     
                     % Assume new expansion capacity comes online this period
-                    if a == 4
-                        short_ind = 2; % large capacity
+                    if (a ~= 0) && (a ~=1) && (a ~=2) && (a ~= 3)
+                        short_ind = a - 2; % expanded capacity index
                     end
                     
                     sCost = shortageCost(index_s_t, index_s_p, short_ind, 1);
@@ -561,8 +646,8 @@ for t = linspace(N,1,N)
                         switch a
                             case 0
                                 T_cap(sc) = 1;
-                            case 4
-                                T_cap(4) = 1;
+                            case num2cell(4:a_exp(end)) % different expansion cases
+                                T_cap(a) = 1;
                         end                         
                     end
 
@@ -697,22 +782,22 @@ for i = 1:R
             if t==1
                 switch k
                     case 1
-                        action(i,t,k) = 3;
+                        action(i,t,k) = 3; %flex
                     case 2
-                        action(i,t,k) = 2;
+                        action(i,t,k) = 2; % large static
                     case 3
-                        action(i,t,k) = 1;
+                        action(i,t,k) = 1; % small static
                     case 4
-                        action(i,t,k) =  X(index_t, index_p, index_c, t);
+                        action(i,t,k) =  X(index_t, index_p, index_c, t); % choose based on policy
                 end
             else 
                 switch k
                     case 1
-                        action(i,t,k) = X(index_t, index_p, index_c, t);
+                        action(i,t,k) = X(index_t, index_p, index_c, t); % flex options
                     case 2
-                        action(i,t,k) = 0;
+                        action(i,t,k) = 0; % large static, thus do not expand
                     case 3
-                        action(i,t,k) = 0;
+                        action(i,t,k) = 0; % large static, thus do not expand
                     case 4
                         action(i,t,k) =  X(index_t, index_p, index_c, t);
                 end
@@ -726,23 +811,25 @@ for i = 1:R
 
             % Select which capacity is currently available
             if sc == 1 || sc == 3
-                short_ind = 1;    % small capacity
+                short_ind = 1;    % small capacity static or unexpanded flex
+            elseif sc == 2 || sc == s_C(end)
+                short_ind = length(storage); % largest capacity static (C), fully expanded flex
             else
-                short_ind = 2; % large capacity
+                short_ind = sc - 2; % intermediate expanded capacity           
             end
 
             % In first time period, assume have dam built
             if t == 1
                 if a == 2
-                    short_ind = 2; % large capacity
+                    short_ind = length(storage); % largest capacity
                 else 
                     short_ind = 1;    % small capacity
                 end
             end
-
+            
             % Assume new expansion capacity comes online this period
-            if a == 4
-                short_ind = 2; % large capacity
+            if (a ~= 0) && (a ~=1) && (a ~=2) && (a ~= 3) % if it is an expansion action
+                short_ind = a - 2; % expanded capacity index
             end
 
             % Get shortage and dam costs
@@ -769,9 +856,9 @@ for i = 1:R
                 switch a
                     case 0
                         T_cap(sc) = 1;
-                    case 4
-                        T_cap(4) = 1;
-                end                         
+                    case num2cell(4:a_exp(end)) % different expansion cases
+                        T_cap(a) = 1;
+                end
             end
 
             
